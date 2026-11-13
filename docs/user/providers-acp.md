@@ -52,6 +52,13 @@ endpoint and the exact installed model tag. When both processes run on the same 
 level. Use a dedicated profile via the `PRIME_AGENT_CODING_AGENT_DIR` environment override if you
 want separate credentials and session state.
 
+On Windows, Prime Agent needs its Python kernel to execute tools. Make `uv` available to the
+agent for automatic setup, or set `PRIME_AGENT_KERNEL_PYTHON` to an interpreter with the runtime
+bundled with your Prime Agent release and its
+[default kernel packages](https://github.com/PrimeIntellect-ai/prime-agent/blob/v0.10.3/crates/pa-core/src/kernel/bootstrap/mod.rs).
+For a separate daemon on Windows, use a full named pipe path for `PRIME_AGENT_DAEMON_SOCKET`,
+such as `\\.\pipe\prime-agent-t3-lab`.
+
 Prime Agent 0.10.3 advertised a model selector and no reasoning selector for the tested custom
 Ollama model. With that configuration, select reasoning using the launch arguments. Test the
 provider in a disposable project before giving it access to a working checkout.
