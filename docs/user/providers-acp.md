@@ -63,6 +63,22 @@ Prime Agent 0.10.3 advertised a model selector and no reasoning selector for the
 Ollama model. With that configuration, select reasoning using the launch arguments. Test the
 provider in a disposable project before giving it access to a working checkout.
 
+#### Try a read-only file check
+
+1. Create a disposable folder with a file named `sample.txt`. Put one line in it, such as
+   `Fixture is ready.`
+2. Add that folder as a T3 project. In a new chat, select your Prime Agent provider and the
+   configured Ollama model in the model picker.
+3. Send this prompt:
+
+   > Use one Python tool call to read sample.txt in this folder. Return its exact line.
+   > Leave the file as it is and use only local tools.
+
+The chat should display a tool action and reply with `Fixture is ready.` Check that the file
+still contains its original line. This exercises model selection and tool execution in one
+turn. If the chat reaches the tool step and reports a kernel startup error, check the Python
+runtime and default packages before retrying.
+
 ## Where agents run
 
 Registry agents always run on the machine that hosts your T3 Code server. That stays true when you
