@@ -383,8 +383,12 @@ its own under the environment's Scratch project. For stacked PRs, use the parent
 `startFromOrigin: false`. The new thread may not run with broader runtime or
 interaction modes than the caller. As for `delegate_task`, a runtime mode the
 provider does not offer is refused, and an inherited or default one steps down
-to the broadest mode it offers. Launch has no retry key, so inspect existing threads after a failed or lost response before
-launching again. `create_threads` remains the batch option for a shared checkout.
+to the broadest mode it offers. With `strictModelOptions: true`, explicit model
+options must match the selected model's advertised option IDs and values.
+An invalid option is rejected before a thread is created. Retry a failed or lost
+response with the same `clientRequestId` and caller. An accepted launch replays
+without revalidating its options against the current catalog.
+`create_threads` remains the batch option for a shared checkout.
 
 ### `t3_thread_list`
 

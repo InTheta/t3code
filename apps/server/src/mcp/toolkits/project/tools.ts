@@ -136,6 +136,12 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     ),
     title: TrimmedNonEmptyString,
     modelSelection: Schema.optional(ModelSelection),
+    strictModelOptions: Schema.optional(
+      Schema.Boolean.annotate({
+        description:
+          "Reject explicit model options that are not advertised for the selected model. Applies only to new launches.",
+      }),
+    ),
     runtimeMode: Schema.optional(RuntimeMode),
     interactionMode: Schema.optional(ProviderInteractionMode),
     workspaceStrategy: Schema.optional(
