@@ -39,6 +39,23 @@ credentials and skills remain managed by the installed agent or its wrapper. Mod
 options come from ACP, including model IDs that contain JSON. T3 Code launches the executable directly
 without expanding shell expressions.
 
+### Prime Agent
+
+Install [Prime Agent](https://github.com/PrimeIntellect-ai/prime-agent/releases) on the machine
+hosting the T3 server. Add a local ACP command with the Prime Agent executable and two argument
+rows, `--mode` and `acp`. Configure model access in Prime Agent before opening a thread.
+
+For a local Ollama trial, configure Prime Agent's custom provider with the Ollama OpenAI-compatible
+endpoint and the exact installed model tag. When both processes run on the same host, use
+`http://127.0.0.1:11434/v1`. To pin the launch settings, add separate argument rows for
+`--provider`, the configured provider name, `--model`, the tag, `--thinking`, and the desired
+level. Use a dedicated profile via the `PRIME_AGENT_CODING_AGENT_DIR` environment override if you
+want separate credentials and session state.
+
+Prime Agent 0.10.3 advertised a model selector and no reasoning selector for the tested custom
+Ollama model. With that configuration, select reasoning using the launch arguments. Test the
+provider in a disposable project before giving it access to a working checkout.
+
 ## Where agents run
 
 Registry agents always run on the machine that hosts your T3 Code server. That stays true when you
