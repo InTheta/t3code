@@ -30,6 +30,7 @@ import { resolveRuntimeMode } from "../../delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestrationMcp from "../../OrchestratorMcpService.ts";
+import { invalidOptionSelections } from "../../modelOptionValidation.ts";
 import { newCommandId, readCaller, resolveProjectId, unavailable } from "../../threadAccess.ts";
 import { ProjectToolkit } from "./tools.ts";
 
@@ -247,11 +248,27 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
             : runtimeMode;
         if (!replaying) {
           const providers = yield* (yield* ProviderRegistry.ProviderRegistry).getProviders;
+          const provider = providers.find(
+            (candidate) => candidate.instanceId === modelSelection.instanceId,
+          );
+          const options = input.modelSelection?.options;
+          if (input.strictModelOptions && options && options.length > 0) {
+            const model = provider?.models.find(
+              (candidate) => candidate.slug === modelSelection.model,
+            );
+            const invalid = invalidOptionSelections(
+              options,
+              model?.capabilities?.optionDescriptors ?? [],
+            );
+            if (invalid.length > 0)
+              return yield* new OrchestratorMcpFailure({
+                code: "invalid_request",
+                message: `Model ${modelSelection.model} rejected options: ${invalid.join(" ")} No thread was created.`,
+              });
+          }
           startedRuntimeMode = yield* resolveRuntimeMode(startedRuntimeMode, input.runtimeMode, {
             modelSelection,
-            supportedRuntimeModes: providers.find(
-              (provider) => provider.instanceId === modelSelection.instanceId,
-            )?.supportedRuntimeModes,
+            supportedRuntimeModes: provider?.supportedRuntimeModes,
           });
         }
         const result = yield* ThreadMessageIntake.launchThread({

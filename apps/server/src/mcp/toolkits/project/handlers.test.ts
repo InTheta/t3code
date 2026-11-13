@@ -719,6 +719,91 @@ it.effect("a retried worktree launch replays after its base ref is gone", () =>
   }),
 );
 
+it.effect("strict launches reject unsupported provider options before creating a thread", () =>
+  Effect.gen(function* () {
+    const launched: ThreadLaunch.ThreadLaunchInput[] = [];
+    const instanceId = ProviderInstanceId.make("codex");
+    const model = "gpt-5.6-luna";
+    const providers: ServerProvider[] = [
+      {
+        instanceId,
+        driver: ProviderDriverKind.make("codex"),
+        enabled: true,
+        installed: true,
+        status: "ready",
+        version: null,
+        auth: { status: "authenticated" },
+        checkedAt: "2026-01-01T00:00:00Z",
+        models: [
+          {
+            slug: model,
+            name: "Luna",
+            isCustom: false,
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "reasoningEffort",
+                  label: "Reasoning",
+                  type: "select",
+                  options: [{ id: "low", label: "Low" }],
+                },
+              ],
+            },
+          },
+        ],
+        slashCommands: [],
+        skills: [],
+      },
+    ];
+    const { projectId, dependencies } = clientLaunchHarness({
+      runtimeModeCeiling: "full-access",
+      launched,
+      providers,
+    });
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const launch = (
+      id: string,
+      value: string,
+      strictModelOptions?: boolean,
+      clientRequestId?: string,
+    ) =>
+      toolkit
+        .handle("t3_thread_launch", {
+          projectId,
+          title: "Review",
+          modelSelection: { instanceId, model, options: [{ id, value }] },
+          ...(strictModelOptions === undefined ? {} : { strictModelOptions }),
+          ...(clientRequestId === undefined ? {} : { clientRequestId }),
+        })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+
+    const wrongKey = yield* launch("effort", "low", true);
+    expect(wrongKey.at(-1)?.result).toMatchObject({
+      code: "invalid_request",
+      message: expect.stringContaining("Unknown option effort"),
+    });
+    const wrongValue = yield* launch("reasoningEffort", "high", true);
+    expect(wrongValue.at(-1)?.result).toMatchObject({ code: "invalid_request" });
+    expect(launched).toHaveLength(0);
+
+    yield* launch("effort", "low");
+    expect(launched[0]?.modelSelection.options).toEqual([{ id: "effort", value: "low" }]);
+
+    const accepted = yield* launch("reasoningEffort", "low", true, "strict-review");
+    expect(accepted.at(-1)?.result).toMatchObject({ projectId });
+    expect(launched[1]?.modelSelection.options).toEqual([{ id: "reasoningEffort", value: "low" }]);
+
+    providers.length = 0;
+    const replayed = yield* launch("reasoningEffort", "low", true, "strict-review");
+    expect(replayed.at(-1)?.result).toMatchObject({ projectId });
+    expect(launched[2]?.threadId).toBe(launched[1]?.threadId);
+  }),
+);
+
 it.effect("a client launches with the fallback for an exhausted default", () =>
   Effect.gen(function* () {
     const launched: ThreadLaunch.ThreadLaunchInput[] = [];
