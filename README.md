@@ -83,6 +83,12 @@ Nothing. We built T3 Code because we wanted the best possible development experi
 
 We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the tool that you want.
 
+## Prime Agent
+
+This fork documents how to use Prime Agent as a local ACP provider in T3 Code.
+Follow the [Prime Agent setup guide](./docs/user/providers-acp.md#prime-agent)
+to add the provider, configure a model, and test tool execution with a read-only file check.
+
 ## Documentation
 
 - [Install and first run](./docs/user/install.md)
