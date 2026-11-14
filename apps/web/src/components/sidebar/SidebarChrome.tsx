@@ -279,6 +279,14 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             />
           ) : null}
           <SidebarUtilityItem
+            icon={<PullRequestGlyph.pullRequest />}
+            label="Delivery"
+            onClick={() => {
+              closeMobileSidebar();
+              void navigate({ to: "/delivery" });
+            }}
+          />
+          <SidebarUtilityItem
             icon={<ChartNoAxesColumnIcon />}
             label="Usage"
             onClick={handleUsageClick}
