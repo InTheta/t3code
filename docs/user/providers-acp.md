@@ -39,6 +39,46 @@ credentials and skills remain managed by the installed agent or its wrapper. Mod
 options come from ACP, including model IDs that contain JSON. T3 Code launches the executable directly
 without expanding shell expressions.
 
+### Prime Agent
+
+Install [Prime Agent](https://github.com/PrimeIntellect-ai/prime-agent/releases) on the machine
+hosting the T3 server. Add a local ACP command with the Prime Agent executable and two argument
+rows, `--mode` and `acp`. Configure model access in Prime Agent before opening a thread.
+
+For a local Ollama trial, configure Prime Agent's custom provider with the Ollama OpenAI-compatible
+endpoint and the exact installed model tag. When both processes run on the same host, use
+`http://127.0.0.1:11434/v1`. To pin the launch settings, add separate argument rows for
+`--provider`, the configured provider name, `--model`, the tag, `--thinking`, and the desired
+level. Use a dedicated profile via the `PRIME_AGENT_CODING_AGENT_DIR` environment override if you
+want separate credentials and session state.
+
+On Windows, Prime Agent needs its Python kernel to execute tools. Make `uv` available to the
+agent for automatic setup, or set `PRIME_AGENT_KERNEL_PYTHON` to an interpreter with the runtime
+bundled with your Prime Agent release and its
+[default kernel packages](https://github.com/PrimeIntellect-ai/prime-agent/blob/v0.10.3/crates/pa-core/src/kernel/bootstrap/mod.rs).
+For a separate daemon on Windows, use a full named pipe path for `PRIME_AGENT_DAEMON_SOCKET`,
+such as `\\.\pipe\prime-agent-t3-lab`.
+
+Prime Agent 0.10.3 advertised a model selector and no reasoning selector for the tested custom
+Ollama model. With that configuration, select reasoning using the launch arguments. Test the
+provider in a disposable project before giving it access to a working checkout.
+
+#### Try a read-only file check
+
+1. Create a disposable folder with a file named `sample.txt`. Put one line in it, such as
+   `Fixture is ready.`
+2. Add that folder as a T3 project. In a new chat, select your Prime Agent provider and the
+   configured Ollama model in the model picker.
+3. Send this prompt:
+
+   > Use one Python tool call to read sample.txt in this folder. Return its exact line.
+   > Leave the file as it is and use only local tools.
+
+The chat should display a tool action and reply with `Fixture is ready.` Check that the file
+still contains its original line. This exercises model selection and tool execution in one
+turn. If the chat reaches the tool step and reports a kernel startup error, check the Python
+runtime and default packages before retrying.
+
 ## Where agents run
 
 Registry agents always run on the machine that hosts your T3 Code server. That stays true when you
