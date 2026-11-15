@@ -383,10 +383,9 @@ export default defineConfig(() => {
         clientFiles: ["./src/main.tsx"],
       },
       watch: { exclude: rolldownWatchExclude },
-      ...(devProxyTarget
-        ? {
-            // Share prefixes with the backend catch-all so the proxy and 404 lists cannot drift.
-            proxy: Object.fromEntries(
+      proxy: {
+        ...(devProxyTarget
+          ? Object.fromEntries(
               DEV_PROXIED_PATH_PREFIXES.map((prefix) => [
                 prefix,
                 {
@@ -395,9 +394,12 @@ export default defineConfig(() => {
                   ...(prefix === "/ws" || prefix === "/api" ? { ws: true } : {}),
                 },
               ]),
-            ),
-          }
-        : {}),
+            )
+          : {}),
+        ...(process.env.T3CODE_DELIVERY_LAB === "1"
+          ? { "/delivery-sidecar": { target: "http://127.0.0.1:43887" } }
+          : {}),
+      },
       // Electron needs an explicit HMR host; elsewhere derive it from page origin for Tailscale/LAN.
       ...(explicitHost
         ? {
