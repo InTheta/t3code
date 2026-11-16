@@ -1,5 +1,7 @@
 import { createFileRoute, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 
+import { parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
+
 interface Delivery {
   version: 1;
   ticket: string;
@@ -29,6 +31,7 @@ function readDeliveryShape(value: unknown, ticket: string): Delivery | null {
     typeof row.owner !== "string" ||
     typeof row.stage !== "string" ||
     typeof row.pullRequest?.head !== "string" ||
+    typeof row.pullRequest.head !== "string" ||
     !commitSha.test(row.pullRequest.head) ||
     typeof row.pullRequest.url !== "string" ||
     !/^https:\/\//.test(row.pullRequest.url) ||
@@ -60,11 +63,75 @@ async function readDelivery(ticket: string, signal: AbortSignal): Promise<Delive
   }
 }
 
+interface PullRequestDelivery {
+  version: 1;
+  pullRequest: { repository: string; number: number; head: string; url: string };
+  candidate: string | null;
+  qa: { status: string; head?: string; freshness?: string };
+  ci: { status: string; head?: string; runId?: number };
+}
+
+async function readPullRequestDelivery(value: string, signal: AbortSignal) {
+  const link = parseDeliveryPullRequestUrl(value);
+  if (!link) return null;
+  const segments = link.repository.split("/").map(encodeURIComponent).join("/");
+  try {
+    const response = await fetch(`/delivery-sidecar/v1/pull-requests/${segments}/${link.number}`, {
+      cache: "no-store",
+      signal,
+    });
+    if (!response.ok) return null;
+    const row = (await response.json()) as Partial<PullRequestDelivery> | null;
+    if (
+      row?.version !== 1 ||
+      typeof row.pullRequest?.repository !== "string" ||
+      row.pullRequest.repository.toLowerCase() !== link.repository.toLowerCase() ||
+      row.pullRequest.number !== link.number ||
+      !commitSha.test(row.pullRequest.head) ||
+      (row.candidate !== null &&
+        (typeof row.candidate !== "string" || !commitSha.test(row.candidate))) ||
+      typeof row.qa?.status !== "string" ||
+      typeof row.ci?.status !== "string"
+    )
+      return null;
+    return row as PullRequestDelivery;
+  } catch {
+    return null;
+  }
+}
+
+function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
+  const { pullRequest, candidate, qa, ci } = delivery;
+  const fields = [
+    ["Current PR commit", pullRequest.head],
+    ["Verified candidate", candidate ?? "No managed candidate"],
+    ["QA reviewed commit", qa.head ?? "Unavailable"],
+    ["Independent QA", qa.freshness === "stale" ? `${qa.status} (stale)` : qa.status],
+    ["CI tested commit", ci.head ?? "Unavailable"],
+    ["CI", ci.head && ci.head !== pullRequest.head ? "stale" : ci.status],
+  ];
+  return (
+    <article className="mt-4 max-w-2xl rounded-lg border p-4">
+      <h2 className="font-medium">
+        {pullRequest.repository} #{pullRequest.number}
+      </h2>
+      <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+        {fields.map(([label, value]) => (
+          <div className="contents" key={label}>
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="break-all">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </article>
+  );
+}
+
 function DeliveryPage() {
   const router = useRouter();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { ticket } = Route.useSearch();
-  const delivery = Route.useLoaderData();
+  const { ticket, pr } = Route.useSearch();
+  const { delivery, pullRequestDelivery } = Route.useLoaderData();
   const loading = useRouterState({ select: (state) => state.isLoading });
   const ciStatus =
     delivery?.ci.status === "passed" && delivery.ci.head !== delivery.pullRequest.head
@@ -124,6 +191,46 @@ function DeliveryPage() {
           Open ticket
         </button>
       </form>
+      <form
+        className="mt-4 flex items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const value = new FormData(event.currentTarget).get("pr");
+          if (typeof value === "string" && parseDeliveryPullRequestUrl(value)) {
+            void navigate({ search: { pr: value.trim() } });
+          } else {
+            const field = event.currentTarget.elements.namedItem("pr");
+            if (field instanceof HTMLInputElement) {
+              field.setCustomValidity("Enter a GitHub pull request URL.");
+              field.reportValidity();
+            }
+          }
+        }}
+      >
+        <label className="flex flex-col gap-1 text-sm">
+          Pull request URL
+          <input
+            key={pr}
+            className="rounded-md border bg-transparent px-3 py-1"
+            defaultValue={pr}
+            name="pr"
+            type="url"
+            required
+            onInput={(event) => event.currentTarget.setCustomValidity("")}
+          />
+        </label>
+        <button className="rounded-md border px-3 py-1 text-sm" type="submit">
+          Open Delivery
+        </button>
+      </form>
+      {pr && (loading || !pullRequestDelivery) && (
+        <p className="mt-4 text-sm" role="status">
+          {loading
+            ? "Reading pull request evidence…"
+            : "Pull request evidence unavailable. Check GitHub access and the sidecar connection."}
+        </p>
+      )}
+      {pullRequestDelivery && !loading && <PullRequestEvidence delivery={pullRequestDelivery} />}
       {ticket && (loading || !delivery) && (
         <p className="mt-4 text-sm" role="status">
           {loading ? "Reading delivery evidence…" : "Delivery sidecar unavailable."}
@@ -157,14 +264,25 @@ function DeliveryPage() {
 }
 
 export const Route = createFileRoute("/_chat/delivery")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { ticket?: string | undefined; pr?: string | undefined } => ({
     ticket:
       typeof search.ticket === "string" && validTicket.test(search.ticket)
         ? search.ticket
         : undefined,
+    pr:
+      typeof search.pr === "string" && parseDeliveryPullRequestUrl(search.pr)
+        ? search.pr
+        : undefined,
   }),
-  loaderDeps: ({ search }) => ({ ticket: search.ticket }),
-  loader: ({ abortController, deps }) =>
-    deps.ticket ? readDelivery(deps.ticket, abortController.signal) : null,
+  loaderDeps: ({ search }) => ({ ticket: search.ticket, pr: search.pr }),
+  loader: async ({ abortController, deps }) => ({
+    delivery:
+      !deps.pr && deps.ticket ? await readDelivery(deps.ticket, abortController.signal) : null,
+    pullRequestDelivery: deps.pr
+      ? await readPullRequestDelivery(deps.pr, abortController.signal)
+      : null,
+  }),
   component: DeliveryPage,
 });
