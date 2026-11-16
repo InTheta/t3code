@@ -9,3 +9,25 @@ export function parseDeliveryPullRequestUrl(value: string) {
     return null;
   }
 }
+
+export function deliveryCiRunUrl(repository: string, runId: unknown): string | null {
+  const parts = repository.split("/");
+  const [owner, repo] = parts;
+  if (
+    parts.length !== 2 ||
+    !owner ||
+    !repo ||
+    /[^a-z0-9-]/i.test(owner) ||
+    owner.startsWith("-") ||
+    owner.endsWith("-") ||
+    /[^a-z0-9_.-]/i.test(repo) ||
+    repo === "." ||
+    repo === ".." ||
+    typeof runId !== "number" ||
+    !Number.isSafeInteger(runId) ||
+    runId <= 0
+  ) {
+    return null;
+  }
+  return `https://github.com/${owner}/${repo}/actions/runs/${runId}`;
+}

@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 
-import { parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
+import type { ReactNode } from "react";
+
+import { deliveryCiRunUrl, parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
 
 interface Delivery {
   version: 1;
@@ -102,18 +104,12 @@ async function readPullRequestDelivery(value: string, signal: AbortSignal) {
 }
 
 function CiRunLink({ repository, runId }: { repository: string; runId?: number | undefined }) {
-  if (typeof runId !== "number" || !Number.isSafeInteger(runId) || runId <= 0) return null;
-
-  const repositoryPath = repository.split("/").map(encodeURIComponent).join("/");
+  const href = deliveryCiRunUrl(repository, runId);
+  if (!href) return null;
   return (
     <>
       {" · "}
-      <a
-        className="underline"
-        href={`https://github.com/${repositoryPath}/actions/runs/${runId}`}
-        target="_blank"
-        rel="noreferrer"
-      >
+      <a className="underline" href={href} target="_blank" rel="noreferrer">
         run {runId}
       </a>
     </>
@@ -122,7 +118,7 @@ function CiRunLink({ repository, runId }: { repository: string; runId?: number |
 
 function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
   const { pullRequest, candidate, qa, ci } = delivery;
-  const fields = [
+  const fields: ReadonlyArray<readonly [string, ReactNode]> = [
     ["Current PR commit", pullRequest.head],
     ["Verified candidate", candidate ?? "No managed candidate"],
     ["QA reviewed commit", qa.head ?? "Unavailable"],
@@ -136,7 +132,7 @@ function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
       </>,
     ],
     ...(delivery.previousCi && delivery.previousCi.head !== pullRequest.head
-      ? [
+      ? ([
           ["Previous CI commit", delivery.previousCi.head],
           [
             "Previous CI",
@@ -145,7 +141,7 @@ function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
               <CiRunLink repository={pullRequest.repository} runId={delivery.previousCi.runId} />
             </>,
           ],
-        ]
+        ] as const)
       : []),
   ];
   return (
