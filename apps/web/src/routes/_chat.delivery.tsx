@@ -101,6 +101,25 @@ async function readPullRequestDelivery(value: string, signal: AbortSignal) {
   }
 }
 
+function CiRunLink({ repository, runId }: { repository: string; runId?: number | undefined }) {
+  if (typeof runId !== "number" || !Number.isSafeInteger(runId) || runId <= 0) return null;
+
+  const repositoryPath = repository.split("/").map(encodeURIComponent).join("/");
+  return (
+    <>
+      {" · "}
+      <a
+        className="underline"
+        href={`https://github.com/${repositoryPath}/actions/runs/${runId}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        run {runId}
+      </a>
+    </>
+  );
+}
+
 function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
   const { pullRequest, candidate, qa, ci } = delivery;
   const fields = [
@@ -109,13 +128,22 @@ function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
     ["QA reviewed commit", qa.head ?? "Unavailable"],
     ["Independent QA", qa.freshness === "stale" ? `${qa.status} (stale)` : qa.status],
     ["CI tested commit", ci.head ?? "Unavailable"],
-    ["CI", ci.head && ci.head !== pullRequest.head ? "stale" : ci.status],
+    [
+      "CI",
+      <>
+        {ci.head && ci.head !== pullRequest.head ? "stale" : ci.status}
+        <CiRunLink repository={pullRequest.repository} runId={ci.runId} />
+      </>,
+    ],
     ...(delivery.previousCi && delivery.previousCi.head !== pullRequest.head
       ? [
           ["Previous CI commit", delivery.previousCi.head],
           [
             "Previous CI",
-            delivery.previousCi.runId ? `stale · run ${delivery.previousCi.runId}` : "stale",
+            <>
+              stale
+              <CiRunLink repository={pullRequest.repository} runId={delivery.previousCi.runId} />
+            </>,
           ],
         ]
       : []),
