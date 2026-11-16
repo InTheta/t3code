@@ -69,6 +69,7 @@ interface PullRequestDelivery {
   candidate: string | null;
   qa: { status: string; head?: string; freshness?: string };
   ci: { status: string; head?: string; runId?: number };
+  previousCi?: { status: string; head: string; runId?: number } | null;
 }
 
 async function readPullRequestDelivery(value: string, signal: AbortSignal) {
@@ -109,6 +110,15 @@ function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
     ["Independent QA", qa.freshness === "stale" ? `${qa.status} (stale)` : qa.status],
     ["CI tested commit", ci.head ?? "Unavailable"],
     ["CI", ci.head && ci.head !== pullRequest.head ? "stale" : ci.status],
+    ...(delivery.previousCi && delivery.previousCi.head !== pullRequest.head
+      ? [
+          ["Previous CI commit", delivery.previousCi.head],
+          [
+            "Previous CI",
+            delivery.previousCi.runId ? `stale · run ${delivery.previousCi.runId}` : "stale",
+          ],
+        ]
+      : []),
   ];
   return (
     <article className="mt-4 max-w-2xl rounded-lg border p-4">
