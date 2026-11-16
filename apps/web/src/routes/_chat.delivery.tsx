@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, useRouter, useRouterState } from "@tansta
 
 import type { ReactNode } from "react";
 
-import { deliveryCiRunUrl, parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
+import { deliveryCiRun, parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
 
 interface Delivery {
   version: 1;
@@ -104,13 +104,14 @@ async function readPullRequestDelivery(value: string, signal: AbortSignal) {
 }
 
 function CiRunLink({ repository, runId }: { repository: string; runId?: number | undefined }) {
-  const href = deliveryCiRunUrl(repository, runId);
-  if (!href) return null;
+  const run = deliveryCiRun(repository, runId);
+  if (!run) return null;
+  if (!run.href) return ` · ${run.label}`;
   return (
     <>
       {" · "}
-      <a className="underline" href={href} target="_blank" rel="noreferrer">
-        run {runId}
+      <a className="underline" href={run.href} target="_blank" rel="noreferrer">
+        {run.label}
       </a>
     </>
   );

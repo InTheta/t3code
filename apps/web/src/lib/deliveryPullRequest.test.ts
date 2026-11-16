@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { deliveryCiRunUrl } from "./deliveryPullRequest";
+import { deliveryCiRun } from "./deliveryPullRequest";
 
-describe("deliveryCiRunUrl", () => {
+describe("deliveryCiRun", () => {
   it("builds a GitHub Actions URL for a positive numeric run ID", () => {
-    expect(deliveryCiRunUrl("InTheta-tools/t3.code_fork", 43_772_162_509)).toBe(
-      "https://github.com/InTheta-tools/t3.code_fork/actions/runs/43772162509",
-    );
+    expect(deliveryCiRun("InTheta-tools/t3.code_fork", 43_772_162_509)).toEqual({
+      label: "run 43772162509",
+      href: "https://github.com/InTheta-tools/t3.code_fork/actions/runs/43772162509",
+    });
   });
 
   it.each([undefined, null, "123", 0, -1, 1.5, Infinity, Number.MAX_SAFE_INTEGER + 1])(
     "rejects invalid run ID %s",
     (runId) => {
-      expect(deliveryCiRunUrl("InTheta/t3code", runId)).toBeNull();
+      expect(deliveryCiRun("InTheta/t3code", runId)).toBeNull();
     },
   );
 
@@ -36,7 +37,7 @@ describe("deliveryCiRunUrl", () => {
     "//example.org/t3code",
     "example.org/t3code",
     "github.com@example.org/t3code",
-  ])("rejects invalid repository path %j", (repository) => {
-    expect(deliveryCiRunUrl(repository, 123)).toBeNull();
+  ])("keeps the run label without a link for invalid repository path %j", (repository) => {
+    expect(deliveryCiRun(repository, 123)).toEqual({ label: "run 123", href: null });
   });
 });

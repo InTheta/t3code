@@ -10,7 +10,10 @@ export function parseDeliveryPullRequestUrl(value: string) {
   }
 }
 
-export function deliveryCiRunUrl(repository: string, runId: unknown): string | null {
+export function deliveryCiRun(repository: string, runId: unknown) {
+  if (typeof runId !== "number" || !Number.isSafeInteger(runId) || runId <= 0) return null;
+
+  const label = `run ${runId}`;
   const parts = repository.split("/");
   const [owner, repo] = parts;
   if (
@@ -22,12 +25,9 @@ export function deliveryCiRunUrl(repository: string, runId: unknown): string | n
     owner.endsWith("-") ||
     /[^a-z0-9_.-]/i.test(repo) ||
     repo === "." ||
-    repo === ".." ||
-    typeof runId !== "number" ||
-    !Number.isSafeInteger(runId) ||
-    runId <= 0
+    repo === ".."
   ) {
-    return null;
+    return { label, href: null };
   }
-  return `https://github.com/${owner}/${repo}/actions/runs/${runId}`;
+  return { label, href: `https://github.com/${owner}/${repo}/actions/runs/${runId}` };
 }
