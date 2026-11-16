@@ -213,6 +213,7 @@ function resolveDevProxyTarget(
 }
 
 const devProxyTarget = resolveDevProxyTarget(process.env.T3CODE_PORT, configuredWsUrl);
+const deliveryProxyTarget = process.env.T3CODE_DELIVERY_PROXY_URL?.trim();
 
 // Brotli quality 5 encodes in hundreds of ms; default quality 11 would replace transfer stalls with encode stalls.
 function devCompressionPlugin(): Plugin {
@@ -391,10 +392,9 @@ export default defineConfig(({ command }) => {
         clientFiles: ["./src/main.tsx"],
       },
       watch: { exclude: rolldownWatchExclude },
-      ...(devProxyTarget
-        ? {
-            // Share prefixes with the backend catch-all so the proxy and 404 lists cannot drift.
-            proxy: Object.fromEntries(
+      proxy: {
+        ...(devProxyTarget
+          ? Object.fromEntries(
               DEV_PROXIED_PATH_PREFIXES.map((prefix) => [
                 prefix,
                 {
@@ -403,9 +403,10 @@ export default defineConfig(({ command }) => {
                   ...(prefix === "/ws" || prefix === "/api" ? { ws: true } : {}),
                 },
               ]),
-            ),
-          }
-        : {}),
+            )
+          : {}),
+        ...(deliveryProxyTarget ? { "/delivery-sidecar": { target: deliveryProxyTarget } } : {}),
+      },
       // Electron needs an explicit HMR host; elsewhere derive it from page origin for Tailscale/LAN.
       ...(explicitHost
         ? {

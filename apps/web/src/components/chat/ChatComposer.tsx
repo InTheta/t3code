@@ -1,3 +1,4 @@
+import { parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
 import { VoiceInputSetup } from "./VoiceInputSetup";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
@@ -3575,6 +3576,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               {composerAttachmentMediaRow}
 
               {composerAttachmentFileList}
+
+              {pendingUserInputs.length === 0 &&
+                !isComposerApprovalState &&
+                prompt.trim().startsWith("https://github.com/") &&
+                parseDeliveryPullRequestUrl(prompt) && (
+                  <button
+                    className="mx-2 rounded-md border px-3 py-1 text-sm"
+                    type="button"
+                    onClick={() =>
+                      void navigate({ to: "/delivery", search: { pr: prompt.trim() } })
+                    }
+                  >
+                    Open Delivery
+                  </button>
+                )}
 
               <div className="relative">
                 {previewFile ? (
