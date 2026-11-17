@@ -9,6 +9,7 @@ const ManagedRun = Schema.Struct({
   version: Schema.Literal(1),
   runId: Schema.String.check(Schema.isPattern(uuid)),
   ticket: Schema.String,
+  traceId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-f0-9]{32}$/))),
   revision: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
   status: Schema.String,
   brief: Schema.Struct({
@@ -53,7 +54,10 @@ export function parseManagedRunId(input: unknown): string | undefined {
 }
 
 export function parseManagedRun(input: unknown, requestedRunId: string): ManagedRun | null {
-  return isManagedRun(input) && input.runId === requestedRunId ? input : null;
+  if (!isManagedRun(input) || input.runId !== requestedRunId) return null;
+  return input.traceId === undefined || input.traceId === input.runId.replaceAll("-", "")
+    ? input
+    : null;
 }
 
 export async function readManagedRun(

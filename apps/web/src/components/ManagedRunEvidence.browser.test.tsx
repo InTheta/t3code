@@ -75,3 +75,11 @@ it("shows the exact reviewed commit and reports a budget overrun separately from
   await expect.element(review.getByText("Operator", { exact: true })).toBeVisible();
   await expect.element(review.getByText("Token budget exceeded")).toBeVisible();
 });
+
+it("displays the Langfuse correlation ID alongside the managed run", async () => {
+  const runId = "aea004a0-2e19-483e-a001-390900df711a";
+  const traceId = runId.replaceAll("-", "");
+  await using screen = await render(<ManagedRunEvidence run={{ ...run, runId, traceId }} />);
+  await expect.element(screen.getByText("Langfuse correlation ID", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText(traceId, { exact: true })).toBeVisible();
+});

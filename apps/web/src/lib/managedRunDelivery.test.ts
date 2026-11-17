@@ -39,6 +39,12 @@ describe("managed-run Delivery", () => {
     expect(parseManagedRun({ ...run, nextVersionField: null }, runId)).toMatchObject(run);
   });
 
+  it("binds a trace correlation ID to the displayed run", () => {
+    const traceId = runId.replaceAll("-", "");
+    expect(parseManagedRun({ ...run, traceId }, runId)?.traceId).toBe(traceId);
+    expect(parseManagedRun({ ...run, traceId: otherId.replaceAll("-", "") }, runId)).toBeNull();
+  });
+
   it("distinguishes an observed zero from missing tool usage", () => {
     expect(parseManagedRun(run, runId)?.stages[0]?.toolCalls).toBeUndefined();
     const withUsage = (toolCalls: number | null) => ({
