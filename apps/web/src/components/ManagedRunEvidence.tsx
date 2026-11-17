@@ -44,12 +44,18 @@ export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
           {run.stages.map((stage) => (
             <li className="rounded-md border p-2 break-words" key={stage.stageId}>
               <p className="font-medium">
-                {stage.role} · {stage.status}
+                {stage.role} ·{" "}
+                {stage.status === "waiting_for_operator" ? "Waiting for operator" : stage.status}
               </p>
               <p>Stage ID {stage.stageId}</p>
               <p>Provider instance {stage.providerInstanceId ?? "Unknown"}</p>
               <p>Thread {stage.threadId ?? "Unknown"}</p>
               <p>Tool calls {formatCount(stage.toolCalls ?? null)}</p>
+              {stage.status === "waiting_for_operator" && (
+                <p className="mt-1 text-muted-foreground">
+                  Review the pending request in the worker thread to continue.
+                </p>
+              )}
             </li>
           ))}
         </ul>
