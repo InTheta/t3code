@@ -21,3 +21,11 @@ A version 1 response contains `version: 1`, `ticket`, `owner`, and `stage`, plus
 
 For a Vite development session, set T3CODE_DELIVERY_PROXY_URL to the URL of your read service.
 For a deployed frontend, configure the same-origin route in your hosting or reverse proxy setup.
+
+### Managed runs
+
+Enter a managed run UUID in Delivery, or open `/delivery?run=<UUID>`. The isolated sidecar
+must expose `GET /delivery-sidecar/v1/managed-runs/<UUID>` through the existing Delivery proxy.
+Delivery shows the recorded brief revision, repository, base commit, scope, reservation, and
+stages. Unknown token usage stays unknown. This view has no approval or dispatch controls.
+Use Provider Settings and Usage to inspect providers in the current T3 environment.

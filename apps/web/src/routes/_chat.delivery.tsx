@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 
+import { ManagedRunEvidence } from "~/components/ManagedRunEvidence";
 import { parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
+import { parseManagedRunId, readManagedRun } from "~/lib/managedRunDelivery";
 
 interface Delivery {
   version: 1;
@@ -140,8 +142,8 @@ function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
 function DeliveryPage() {
   const router = useRouter();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { ticket, pr } = Route.useSearch();
-  const { delivery, pullRequestDelivery } = Route.useLoaderData();
+  const { ticket, pr, run } = Route.useSearch();
+  const { delivery, pullRequestDelivery, managedRun } = Route.useLoaderData();
   const loading = useRouterState({ select: (state) => state.isLoading });
   const ciStatus =
     delivery?.ci.status === "passed" && delivery.ci.head !== delivery.pullRequest.head
@@ -233,7 +235,46 @@ function DeliveryPage() {
           Open Delivery
         </button>
       </form>
-      {pr && (loading || !pullRequestDelivery) && (
+      <form
+        className="mt-4 flex items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const value = parseManagedRunId(new FormData(event.currentTarget).get("run"));
+          if (value) {
+            void navigate({ search: { run: value } });
+          } else {
+            const field = event.currentTarget.elements.namedItem("run");
+            if (field instanceof HTMLInputElement) {
+              field.setCustomValidity("Enter a managed run UUID.");
+              field.reportValidity();
+            }
+          }
+        }}
+      >
+        <label className="flex flex-col gap-1 text-sm">
+          Managed run ID
+          <input
+            key={run}
+            className="rounded-md border bg-transparent px-3 py-1"
+            defaultValue={run}
+            name="run"
+            required
+            onInput={(event) => event.currentTarget.setCustomValidity("")}
+          />
+        </label>
+        <button className="rounded-md border px-3 py-1 text-sm" type="submit">
+          Open managed run
+        </button>
+      </form>
+      {run && (loading || !managedRun) && (
+        <p className="mt-4 text-sm" role="status">
+          {loading
+            ? "Reading managed run…"
+            : "Managed run unavailable. Check the run ID and sidecar connection."}
+        </p>
+      )}
+      {managedRun && !loading && <ManagedRunEvidence run={managedRun} />}
+      {!run && pr && (loading || !pullRequestDelivery) && (
         <p className="mt-4 text-sm" role="status">
           {loading
             ? "Reading pull request evidence…"
@@ -241,7 +282,7 @@ function DeliveryPage() {
         </p>
       )}
       {pullRequestDelivery && !loading && <PullRequestEvidence delivery={pullRequestDelivery} />}
-      {ticket && (loading || !delivery) && (
+      {!run && ticket && (loading || !delivery) && (
         <p className="mt-4 text-sm" role="status">
           {loading ? "Reading delivery evidence…" : "Delivery sidecar unavailable."}
         </p>
@@ -276,7 +317,7 @@ function DeliveryPage() {
 export const Route = createFileRoute("/_chat/delivery")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { ticket?: string | undefined; pr?: string | undefined } => ({
+  ): { ticket?: string | undefined; pr?: string | undefined; run?: string | undefined } => ({
     ticket:
       typeof search.ticket === "string" && validTicket.test(search.ticket)
         ? search.ticket
@@ -285,14 +326,17 @@ export const Route = createFileRoute("/_chat/delivery")({
       typeof search.pr === "string" && parseDeliveryPullRequestUrl(search.pr)
         ? search.pr
         : undefined,
+    run: parseManagedRunId(search.run),
   }),
-  loaderDeps: ({ search }) => ({ ticket: search.ticket, pr: search.pr }),
+  loaderDeps: ({ search }) => ({ ticket: search.ticket, pr: search.pr, run: search.run }),
   loader: async ({ abortController, deps }) => ({
     delivery:
-      !deps.pr && deps.ticket ? await readDelivery(deps.ticket, abortController.signal) : null,
-    pullRequestDelivery: deps.pr
-      ? await readPullRequestDelivery(deps.pr, abortController.signal)
-      : null,
+      !deps.run && !deps.pr && deps.ticket
+        ? await readDelivery(deps.ticket, abortController.signal)
+        : null,
+    pullRequestDelivery:
+      !deps.run && deps.pr ? await readPullRequestDelivery(deps.pr, abortController.signal) : null,
+    managedRun: deps.run ? await readManagedRun(deps.run, abortController.signal) : null,
   }),
   component: DeliveryPage,
 });
