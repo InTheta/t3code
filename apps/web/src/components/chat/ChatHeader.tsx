@@ -400,8 +400,7 @@ export const ChatHeader = memo(function ChatHeader({
           ) : null}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {isServerThread &&
-        canOperateThread &&
+      {canOperateThread &&
         activeThreadEnvironmentId === PRIMARY_LOCAL_ENVIRONMENT_ID &&
         typeof window !== "undefined" &&
         window.desktopBridge && <IsolatedBriefDialog key={activeThreadId} />}
