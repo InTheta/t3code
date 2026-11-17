@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 
 import { ManagedRunEvidence } from "~/components/ManagedRunEvidence";
 import { deliveryCiRun, parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
+import { fetchDeliverySidecar } from "~/lib/deliverySidecarFetch";
 import { parseManagedRunId, readManagedRun } from "~/lib/managedRunDelivery";
 
 interface Delivery {
@@ -63,10 +64,10 @@ function readDeliveryShape(value: unknown, ticket: string): Delivery | null {
 
 async function readDelivery(ticket: string, signal: AbortSignal): Promise<Delivery | null> {
   try {
-    const response = await fetch(`/delivery-sidecar/v1/${encodeURIComponent(ticket)}`, {
-      cache: "no-store",
+    const response = await fetchDeliverySidecar(
+      `/delivery-sidecar/v1/${encodeURIComponent(ticket)}`,
       signal,
-    });
+    );
     return response.ok ? readDeliveryShape(await response.json(), ticket) : null;
   } catch {
     return null;
@@ -88,10 +89,10 @@ async function readPullRequestDelivery(value: string, signal: AbortSignal) {
   if (!link) return null;
   const segments = link.repository.split("/").map(encodeURIComponent).join("/");
   try {
-    const response = await fetch(`/delivery-sidecar/v1/pull-requests/${segments}/${link.number}`, {
-      cache: "no-store",
+    const response = await fetchDeliverySidecar(
+      `/delivery-sidecar/v1/pull-requests/${segments}/${link.number}`,
       signal,
-    });
+    );
     if (!response.ok) return null;
     const row = (await response.json()) as Partial<PullRequestDelivery> | null;
     if (

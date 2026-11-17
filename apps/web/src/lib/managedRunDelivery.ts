@@ -1,5 +1,7 @@
 import * as Schema from "effect/Schema";
 
+import { fetchDeliverySidecar } from "~/lib/deliverySidecarFetch";
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const CommitSha = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/));
 const Tokens = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }));
@@ -59,10 +61,10 @@ export async function readManagedRun(
   signal: AbortSignal,
 ): Promise<ManagedRun | null> {
   try {
-    const response = await fetch(`/delivery-sidecar/v1/managed-runs/${encodeURIComponent(runId)}`, {
-      cache: "no-store",
+    const response = await fetchDeliverySidecar(
+      `/delivery-sidecar/v1/managed-runs/${encodeURIComponent(runId)}`,
       signal,
-    });
+    );
     return response.ok ? parseManagedRun(await response.json(), runId) : null;
   } catch {
     return null;
