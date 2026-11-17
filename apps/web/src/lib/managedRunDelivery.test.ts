@@ -39,6 +39,18 @@ describe("managed-run Delivery", () => {
     expect(parseManagedRun({ ...run, nextVersionField: null }, runId)).toMatchObject(run);
   });
 
+  it("distinguishes an observed zero from missing tool usage", () => {
+    expect(parseManagedRun(run, runId)?.stages[0]?.toolCalls).toBeUndefined();
+    const withUsage = (toolCalls: number | null) => ({
+      ...run,
+      stages: [{ ...run.stages[0], toolCalls }],
+    });
+    expect(parseManagedRun(withUsage(null), runId)?.stages[0]?.toolCalls).toBeNull();
+    expect(parseManagedRun(withUsage(0), runId)?.stages[0]?.toolCalls).toBe(0);
+    expect(parseManagedRun(withUsage(3), runId)?.stages[0]?.toolCalls).toBe(3);
+    expect(parseManagedRun(withUsage(-1), runId)).toBeNull();
+  });
+
   it("rejects mismatched identity and malformed evidence", () => {
     expect(parseManagedRun(run, otherId)).toBeNull();
     expect(parseManagedRun({ ...run, version: 2 }, runId)).toBeNull();

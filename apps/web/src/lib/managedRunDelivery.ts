@@ -27,6 +27,7 @@ const ManagedRun = Schema.Struct({
       status: Schema.String,
       providerInstanceId: Schema.NullOr(Schema.String),
       threadId: Schema.NullOr(Schema.String),
+      toolCalls: Schema.optionalKey(Schema.NullOr(Tokens)),
     }),
   ),
 });

@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 
 import type { ManagedRun } from "~/lib/managedRunDelivery";
 
-function formatTokens(value: number | null): string {
+function formatCount(value: number | null): string {
   return value === null ? "Unknown" : value.toLocaleString();
 }
 
@@ -16,10 +16,10 @@ export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
     ["Repository", brief.repository],
     ["Base commit", brief.baseSha],
     ["Scope", brief.scope],
-    ["Brief tokens", formatTokens(brief.tokens)],
-    ["Reserved tokens", formatTokens(budget.reserved)],
-    ["Used tokens", formatTokens(budget.used)],
-    ["Remaining tokens", formatTokens(budget.remaining)],
+    ["Brief tokens", formatCount(brief.tokens)],
+    ["Reserved tokens", formatCount(budget.reserved)],
+    ["Used tokens", formatCount(budget.used)],
+    ["Remaining tokens", formatCount(budget.remaining)],
   ];
   return (
     <article className="mt-4 max-w-2xl rounded-lg border p-4">
@@ -49,6 +49,7 @@ export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
               <p>Stage ID {stage.stageId}</p>
               <p>Provider instance {stage.providerInstanceId ?? "Unknown"}</p>
               <p>Thread {stage.threadId ?? "Unknown"}</p>
+              <p>Tool calls {formatCount(stage.toolCalls ?? null)}</p>
             </li>
           ))}
         </ul>
