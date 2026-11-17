@@ -1,9 +1,16 @@
-import { createFileRoute, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
+import {
+  Link,
+  createFileRoute,
+  useNavigate,
+  useRouter,
+  useRouterState,
+} from "@tanstack/react-router";
 
 import type { ReactNode } from "react";
 
 import { ManagedRunEvidence } from "~/components/ManagedRunEvidence";
 import { deliveryCiRun, parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
+import { fetchDeliverySidecar } from "~/lib/deliverySidecarFetch";
 import { parseManagedRunId, readManagedRun } from "~/lib/managedRunDelivery";
 
 interface Delivery {
@@ -57,10 +64,10 @@ function readDeliveryShape(value: unknown, ticket: string): Delivery | null {
 
 async function readDelivery(ticket: string, signal: AbortSignal): Promise<Delivery | null> {
   try {
-    const response = await fetch(`/delivery-sidecar/v1/${encodeURIComponent(ticket)}`, {
-      cache: "no-store",
+    const response = await fetchDeliverySidecar(
+      `/delivery-sidecar/v1/${encodeURIComponent(ticket)}`,
       signal,
-    });
+    );
     return response.ok ? readDeliveryShape(await response.json(), ticket) : null;
   } catch {
     return null;
@@ -71,6 +78,7 @@ interface PullRequestDelivery {
   version: 1;
   pullRequest: { repository: string; number: number; head: string; url: string };
   candidate: string | null;
+  managedRunId?: string;
   qa: { status: string; head?: string; freshness?: string };
   ci: { status: string; head?: string; runId?: number };
   previousCi?: { status: string; head: string; runId?: number } | null;
@@ -81,10 +89,10 @@ async function readPullRequestDelivery(value: string, signal: AbortSignal) {
   if (!link) return null;
   const segments = link.repository.split("/").map(encodeURIComponent).join("/");
   try {
-    const response = await fetch(`/delivery-sidecar/v1/pull-requests/${segments}/${link.number}`, {
-      cache: "no-store",
+    const response = await fetchDeliverySidecar(
+      `/delivery-sidecar/v1/pull-requests/${segments}/${link.number}`,
       signal,
-    });
+    );
     if (!response.ok) return null;
     const row = (await response.json()) as Partial<PullRequestDelivery> | null;
     if (
@@ -121,6 +129,7 @@ function CiRunLink({ repository, runId }: { repository: string; runId?: number |
 
 function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
   const { pullRequest, candidate, qa, ci } = delivery;
+  const run = parseManagedRunId(delivery.managedRunId);
   const fields: ReadonlyArray<readonly [string, ReactNode]> = [
     ["Current PR commit", pullRequest.head],
     ["Verified candidate", candidate ?? "No managed candidate"],
@@ -152,6 +161,11 @@ function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
       <h2 className="font-medium">
         {pullRequest.repository} #{pullRequest.number}
       </h2>
+      {run && (
+        <Link className="mt-2 inline-block text-sm underline" to="/delivery" search={{ run }}>
+          Open managed run
+        </Link>
+      )}
       <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
         {fields.map(([label, value]) => (
           <div className="contents" key={label}>
