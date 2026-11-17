@@ -29,7 +29,7 @@ function formatCount(value: number | null): string {
 }
 
 export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
-  const { brief, budget } = run;
+  const { brief, budget, qa } = run;
   const fields = [
     ["Run ID", run.runId],
     ["Status", run.status],
@@ -58,6 +58,20 @@ export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
           </div>
         ))}
       </dl>
+      {qa && (
+        <section className="mt-4 text-sm" aria-label="Independent QA">
+          <h3 className="font-medium">Independent QA</h3>
+          <dl className="mt-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2">
+            <dt className="text-muted-foreground">Verdict</dt>
+            <dd>{qa.verdict === "pass" ? "Passed" : "Failed"}</dd>
+            <dt className="text-muted-foreground">Reviewed commit</dt>
+            <dd className="break-all font-mono">{qa.reviewedSha}</dd>
+            <dt className="text-muted-foreground">Recorded by</dt>
+            <dd>{qa.source === "operator" ? "Operator" : "Provider"}</dd>
+          </dl>
+          {qa.budgetExceeded && <p className="mt-2 font-medium">Token budget exceeded</p>}
+        </section>
+      )}
       <h3 className="mt-4 text-sm font-medium">Stages</h3>
       {run.stages.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">No stages recorded.</p>
