@@ -1,5 +1,6 @@
 import {
   AuthOrchestrationOperateScope,
+  PRIMARY_LOCAL_ENVIRONMENT_ID,
   type EnvironmentId,
   type ScopedThreadRef,
   type ThreadId,
@@ -43,6 +44,7 @@ import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
 import { GuestShareIndicator } from "./GuestShareControls";
+import { IsolatedBriefDialog } from "./IsolatedBriefDialog";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -398,6 +400,11 @@ export const ChatHeader = memo(function ChatHeader({
           ) : null}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
+      {isServerThread &&
+        canOperateThread &&
+        activeThreadEnvironmentId === PRIMARY_LOCAL_ENVIRONMENT_ID &&
+        typeof window !== "undefined" &&
+        window.desktopBridge && <IsolatedBriefDialog key={activeThreadId} />}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
     </div>
   );

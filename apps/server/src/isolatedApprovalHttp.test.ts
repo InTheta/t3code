@@ -33,7 +33,7 @@ it("forwards only explicit approvals from the configured authenticated operator"
     { disableLogger: true },
   );
   try {
-    const send = (body: string, auth?: string) =>
+    const send = (body: string, auth?: string, cookie?: string) =>
       handler(
         new Request("http://localhost/api/isolated-approval/v1/approve", {
           method: "POST",
@@ -41,6 +41,7 @@ it("forwards only explicit approvals from the configured authenticated operator"
             "content-type": "application/json",
             "content-length": String(body.length),
             ...(auth ? { authorization: auth } : {}),
+            ...(cookie ? { cookie } : {}),
           },
           body,
         }),
@@ -49,6 +50,7 @@ it("forwards only explicit approvals from the configured authenticated operator"
     expect((await send(body)).status).toBe(401);
     expect((await send(body, "Bearer t3-session")).status).toBe(403);
     subject = "operator";
+    expect((await send(body, "Bearer t3-session", "session=fixture")).status).toBe(401);
     expect((await send("{}", "Bearer t3-session")).status).toBe(400);
     expect(upstream).not.toHaveBeenCalled();
     expect((await send(body, "Bearer t3-session")).status).toBe(200);

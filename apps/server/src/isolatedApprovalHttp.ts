@@ -40,7 +40,10 @@ const route = (action: "review" | "approve") =>
       }
 
       const request = yield* HttpServerRequest.HttpServerRequest;
-      if (!/^Bearer \S+$/i.test(request.headers.authorization ?? "")) {
+      if (
+        request.headers.cookie !== undefined ||
+        !/^Bearer \S+$/i.test(request.headers.authorization ?? "")
+      ) {
         return HttpServerResponse.empty({ status: 401 });
       }
       const auth = yield* EnvironmentAuth;
