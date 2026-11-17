@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 
-import { parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
+import type { ReactNode } from "react";
+
+import { deliveryCiRun, parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
 
 interface Delivery {
   version: 1;
@@ -101,23 +103,46 @@ async function readPullRequestDelivery(value: string, signal: AbortSignal) {
   }
 }
 
+function CiRunLink({ repository, runId }: { repository: string; runId?: number | undefined }) {
+  const run = deliveryCiRun(repository, runId);
+  if (!run) return null;
+  if (!run.href) return ` · ${run.label}`;
+  return (
+    <>
+      {" · "}
+      <a className="underline" href={run.href} target="_blank" rel="noreferrer">
+        {run.label}
+      </a>
+    </>
+  );
+}
+
 function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
   const { pullRequest, candidate, qa, ci } = delivery;
-  const fields = [
+  const fields: ReadonlyArray<readonly [string, ReactNode]> = [
     ["Current PR commit", pullRequest.head],
     ["Verified candidate", candidate ?? "No managed candidate"],
     ["QA reviewed commit", qa.head ?? "Unavailable"],
     ["Independent QA", qa.freshness === "stale" ? `${qa.status} (stale)` : qa.status],
     ["CI tested commit", ci.head ?? "Unavailable"],
-    ["CI", ci.head && ci.head !== pullRequest.head ? "stale" : ci.status],
+    [
+      "CI",
+      <>
+        {ci.head && ci.head !== pullRequest.head ? "stale" : ci.status}
+        <CiRunLink repository={pullRequest.repository} runId={ci.runId} />
+      </>,
+    ],
     ...(delivery.previousCi && delivery.previousCi.head !== pullRequest.head
-      ? [
+      ? ([
           ["Previous CI commit", delivery.previousCi.head],
           [
             "Previous CI",
-            delivery.previousCi.runId ? `stale · run ${delivery.previousCi.runId}` : "stale",
+            <>
+              stale
+              <CiRunLink repository={pullRequest.repository} runId={delivery.previousCi.runId} />
+            </>,
           ],
-        ]
+        ] as const)
       : []),
   ];
   return (
