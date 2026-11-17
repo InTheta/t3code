@@ -4,6 +4,11 @@ import { userEvent } from "vite-plus/test/browser";
 
 const persisted = vi.hoisted(() => ({ title: "" }));
 const openMenu = vi.hoisted(() => vi.fn());
+vi.mock(import("../../state/environments"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  usePrimaryEnvironmentId: () => EnvironmentId.make("local-backend-generated-id"),
+}));
+
 vi.mock(import("../../state/session"), async (importOriginal) => ({
   ...(await importOriginal()),
   useEnvironmentScope: () => true,
@@ -24,14 +29,14 @@ vi.mock(import("~/hooks/useThreadActionMenu"), () => ({
 import { render, stubGlobal } from "../../../test/render";
 import { ChatHeader } from "./ChatHeader";
 
-function header(title: string) {
+function header(title: string, environment = "environment", isServerThread = true) {
   return (
     <>
       <ChatHeader
-        activeThreadEnvironmentId={EnvironmentId.make("environment")}
+        activeThreadEnvironmentId={EnvironmentId.make(environment)}
         activeThreadId={ThreadId.make("thread")}
         activeThreadTitle={title}
-        isServerThread
+        isServerThread={isServerThread}
         activeProject={null}
         parentThreadLink={null}
         onOpenThread={() => {}}
@@ -102,4 +107,14 @@ it("keeps the Escape that cancels a rename from also reaching window shortcuts",
   await expect.element(input).not.toBeInTheDocument();
   expect(persisted.title).toBe("New thread");
   expect(windowEscapes).toEqual([true]);
+});
+
+it("offers isolated brief review on a draft in the resolved primary desktop environment", async () => {
+  using _bridge = stubGlobal("desktopBridge", {});
+  await using screen = await render(header("New thread", "local-backend-generated-id", false));
+  const review = screen.getByRole("button", { name: "Review isolated brief" });
+  await expect.element(review).toBeVisible();
+
+  await screen.rerender(header("Other thread", "linked-environment", false));
+  await expect.element(review).not.toBeInTheDocument();
 });
