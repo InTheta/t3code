@@ -41,8 +41,8 @@ const isDraft = Schema.is(Draft);
 const isApproval = Schema.is(Schema.Struct({ runId: Schema.String, revision: Schema.String }));
 
 async function postApproval(
-  action: "review" | "approve",
-  input: { ticket: string; revision?: string },
+  action: "prepare" | "review" | "approve",
+  input: { ticket: string; revision?: string; scope?: string },
 ): Promise<unknown> {
   const token = await readDesktopPrimaryBearerToken();
   if (!token) throw new Error("Sign in to the local desktop environment.");
@@ -57,13 +57,19 @@ async function postApproval(
       cache: "no-store",
     },
   );
-  if (response.status === 409) {
-    const value: unknown = await response.json();
+  if (response.status === 400 || response.status === 409) {
+    const value: unknown = await response.json().catch(() => undefined);
     const error = Schema.is(Schema.Struct({ error: Schema.String }));
-    throw new Error(error(value) ? value.error : "Review the latest prepared brief.");
+    throw new Error(
+      error(value) ? value.error : "Check your ticket and scope, then review the latest draft.",
+    );
   }
   if (response.status === 404)
-    throw new Error("Isolated approval is disabled in this environment.");
+    throw new Error(
+      action === "prepare"
+        ? "Draft preparation is disabled in this environment."
+        : "Isolated approval is disabled in this environment.",
+    );
   if (response.status === 401 || response.status === 403) {
     throw new Error("This session cannot approve isolated runs.");
   }
@@ -77,24 +83,43 @@ function BriefForm() {
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
 
-  async function review(event: FormEvent<HTMLFormElement>) {
+  async function loadDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const ticket = new FormData(event.currentTarget).get("ticket");
-    if (pending || typeof ticket !== "string" || !ticketPattern.test(ticket.trim())) return;
+    const form = new FormData(event.currentTarget);
+    const ticket = String(form.get("ticket") ?? "").trim();
+    const scope = String(form.get("scope") ?? "").trim();
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    const action =
+      submitter instanceof HTMLButtonElement && submitter.value === "prepare"
+        ? "prepare"
+        : "review";
+    if (pending) return;
+    if (!ticketPattern.test(ticket)) {
+      setError("Enter a ticket using letters, digits, hyphens or underscores.");
+      return;
+    }
+    if (action === "prepare" && !scope) {
+      setError("Enter a task scope to prepare a draft.");
+      return;
+    }
     setPending(true);
     setDraft(null);
     setRunId(undefined);
     setError(undefined);
     try {
-      const value = await postApproval("review", { ticket: ticket.trim() });
-      if (!isDraft(value) || value.ticket !== ticket.trim())
-        throw new Error("Invalid prepared brief.");
-      setDraft(value);
+      const value = await postApproval(
+        action,
+        action === "prepare" ? { ticket, scope } : { ticket },
+      );
+      if (isDraft(value) && value.ticket === ticket) {
+        setDraft(value);
+      } else {
+        setError("Invalid prepared brief.");
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Review failed.");
-    } finally {
-      setPending(false);
     }
+    setPending(false);
   }
 
   async function approve() {
@@ -110,26 +135,36 @@ function BriefForm() {
         isApproval(value) && value.revision === draft.revision
           ? parseManagedRunId(value.runId)
           : undefined;
-      if (!id)
-        throw new Error("Approval receipt is unavailable. Retry the same revision to recover it.");
-      setRunId(id);
+      if (id) {
+        setRunId(id);
+      } else {
+        setError("Approval receipt is unavailable. Retry the same revision to recover it.");
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Approval failed.");
-    } finally {
-      setPending(false);
     }
+    setPending(false);
   }
 
   return (
     <div className="space-y-4">
-      <form onSubmit={(event) => void review(event)} className="flex items-end gap-2">
-        <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
-          Prepared ticket
+      <form onSubmit={(event) => void loadDraft(event)} className="space-y-3">
+        <label className="flex flex-col gap-1 text-sm">
+          Ticket
           <input name="ticket" required maxLength={100} className="rounded-md border p-2" />
         </label>
-        <Button type="submit" disabled={pending}>
-          Review
-        </Button>
+        <label className="flex flex-col gap-1 text-sm">
+          Task scope
+          <textarea name="scope" rows={3} maxLength={4000} className="rounded-md border p-2" />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" variant="outline" disabled={pending}>
+            Review existing draft
+          </Button>
+          <Button type="submit" value="prepare" disabled={pending}>
+            Prepare draft
+          </Button>
+        </div>
       </form>
       {draft && (
         <div className="space-y-3 break-all text-sm">
@@ -185,7 +220,9 @@ export function IsolatedBriefDialog() {
       </DialogTrigger>
       <DialogPopup className="max-h-[80vh] overflow-auto">
         <DialogTitle>Review isolated brief</DialogTitle>
-        <DialogDescription>Enter a ticket prepared in the isolated workspace.</DialogDescription>
+        <DialogDescription>
+          Prepare a scoped draft or review an existing ticket before approving a run.
+        </DialogDescription>
         {open && <BriefForm />}
       </DialogPopup>
     </Dialog>

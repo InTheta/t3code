@@ -14,7 +14,9 @@ it("forwards only explicit approvals from the configured authenticated operator"
   let subject = "different-account";
   const upstream = vi
     .spyOn(globalThis, "fetch")
-    .mockResolvedValue(Response.json({ runId: "existing-run", revision: "a".repeat(64) }));
+    .mockImplementation(async () =>
+      Response.json({ runId: "existing-run", revision: "a".repeat(64) }),
+    );
   const { handler, dispose } = HttpRouter.toWebHandler(
     layer.pipe(
       Layer.provideMerge(FetchHttpClient.layer),
@@ -33,9 +35,9 @@ it("forwards only explicit approvals from the configured authenticated operator"
     { disableLogger: true },
   );
   try {
-    const send = (body: string, auth?: string, cookie?: string) =>
+    const send = (body: string, auth?: string, cookie?: string, action = "approve") =>
       handler(
-        new Request("http://localhost/api/isolated-approval/v1/approve", {
+        new Request(`http://localhost/api/isolated-approval/v1/${action}`, {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -60,6 +62,11 @@ it("forwards only explicit approvals from the configured authenticated operator"
     expect(new Headers(forwarded?.headers).get("authorization")).toBe("Bearer sidecar-test-token");
     expect(forwarded?.body).toBeInstanceOf(Uint8Array);
     expect(new TextDecoder().decode(forwarded?.body as Uint8Array<ArrayBuffer>)).toBe(body);
+    const draft = JSON.stringify({ ticket: "fixture", scope: "Update fixture" });
+    expect((await send(draft, "Bearer t3-session", undefined, "prepare")).status).toBe(200);
+    const [prepareUrl, prepared] = upstream.mock.calls[1] ?? [];
+    expect(String(prepareUrl)).toBe("http://127.0.0.1:45678/isolated-approval/v1/prepare");
+    expect(new TextDecoder().decode(prepared?.body as Uint8Array<ArrayBuffer>)).toBe(draft);
   } finally {
     await dispose();
     upstream.mockRestore();

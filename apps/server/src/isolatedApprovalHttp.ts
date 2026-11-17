@@ -15,6 +15,10 @@ import {
 import { EnvironmentAuth } from "./auth/EnvironmentAuth.ts";
 
 const ticket = Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/));
+const prepareBody = Schema.Struct({
+  ticket,
+  scope: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4000)),
+});
 const reviewBody = Schema.Struct({ ticket });
 const approveBody = Schema.Struct({
   ticket,
@@ -29,7 +33,9 @@ function isolatedConfig() {
   };
 }
 
-const route = (action: "review" | "approve") =>
+const bodies = { prepare: prepareBody, review: reviewBody, approve: approveBody };
+
+const route = (action: keyof typeof bodies) =>
   HttpRouter.add(
     "POST",
     `/api/isolated-approval/v1/${action}`,
@@ -72,7 +78,7 @@ const route = (action: "review" | "approve") =>
       if (Option.isNone(body)) {
         return HttpServerResponse.empty({ status: 400 });
       }
-      const schema = action === "review" ? reviewBody : approveBody;
+      const schema = bodies[action];
       const input = Schema.decodeUnknownOption(schema)(body.value);
       if (Option.isNone(input)) {
         return HttpServerResponse.empty({ status: 400 });
@@ -91,7 +97,7 @@ const route = (action: "review" | "approve") =>
         Effect.timeout("15 seconds"),
         Effect.option,
       );
-      if (Option.isNone(response) || ![200, 409].includes(response.value.status)) {
+      if (Option.isNone(response) || ![200, 400, 404, 409].includes(response.value.status)) {
         return HttpServerResponse.empty({ status: 502, headers: { "cache-control": "no-store" } });
       }
       return HttpServerResponse.text(response.value.body, {
@@ -102,4 +108,4 @@ const route = (action: "review" | "approve") =>
     }),
   );
 
-export const layer = Layer.mergeAll(route("review"), route("approve"));
+export const layer = Layer.mergeAll(route("prepare"), route("review"), route("approve"));
