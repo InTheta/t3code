@@ -1,4 +1,5 @@
 import {
+  isToolLifecycleItemType,
   OrchestratorMcpFailure,
   OrchestratorMcpThreadListResult,
   OrchestratorMcpThreadReadResult,
@@ -896,6 +897,91 @@ const threadSendCommand = Command.make("send", {
   ),
 );
 
+export function countObservedToolCalls(
+  items: ReadonlyArray<
+    Pick<
+      OrchestratorMcpThreadTimelineItem,
+      "visibility" | "sourceThreadId" | "runId" | "type" | "itemId"
+    >
+  >,
+  threadId: ThreadId,
+  runId: RunId,
+): number {
+  // The runtime emits workspace preparation as a synthetic command_execution.
+  const workspacePreparationItem = `:native-item:${encodeURIComponent(`workspace-preparation:${runId}`)}`;
+  return new Set(
+    items
+      .filter(
+        (item) =>
+          item.visibility === "local" &&
+          item.sourceThreadId === threadId &&
+          item.runId === runId &&
+          !item.itemId.endsWith(workspacePreparationItem) &&
+          (item.type === "dynamic_tool" || isToolLifecycleItemType(item.type)),
+      )
+      .map((item) => item.itemId),
+  ).size;
+}
+
+const threadToolUsageCommand = Command.make("tool-usage", {
+  ...projectLocationFlags,
+  thread: threadArgument,
+  run: Argument.String("run"),
+}).pipe(
+  Command.withDescription("Print the count observed in the native Work Log for a completed run."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const threadId = yield* decodeThreadId(flags.thread);
+      yield* withThreadTools({ ...flags, json: true }, (tools) =>
+        Effect.gen(function* () {
+          let cursor: number | undefined;
+          const items: Array<OrchestratorMcpThreadTimelineItem> = [];
+          for (;;) {
+            const page = yield* tools.call(
+              "t3_thread_read",
+              {
+                threadId,
+                view: "activity",
+                limit: READ_PAGE_LIMIT,
+                maxCharsPerItem: 1,
+                runLimit: 1,
+                ...(cursor === undefined ? {} : { afterPosition: cursor }),
+              },
+              OrchestratorMcpThreadReadResult,
+            );
+            const run = page.recentRuns[0];
+            if (
+              page.thread.threadId !== threadId ||
+              run?.runId !== flags.run ||
+              run.status !== "completed" ||
+              page.thread.activeRunId !== null
+            ) {
+              return yield* new ThreadUsageError({
+                detail: "Tool evidence requires the latest completed run of an idle thread.",
+              });
+            }
+            items.push(...page.items);
+            if (!page.hasMore) {
+              return yield* printJson({
+                source: "t3-work-log",
+                threadId,
+                turnId: run.runId,
+                toolCalls: countObservedToolCalls(items, threadId, run.runId),
+              });
+            }
+            if (page.nextPosition === null || page.nextPosition <= (cursor ?? -1)) {
+              return yield* new ThreadUsageError({
+                detail: "Tool evidence timeline is incomplete.",
+              });
+            }
+            cursor = page.nextPosition;
+          }
+        }),
+      );
+    }).pipe(reportThreadErrors),
+  ),
+);
+
 const threadShowCommand = Command.make("show", {
   ...projectLocationFlags,
   thread: threadArgument,
@@ -957,5 +1043,6 @@ export const threadCommand = Command.make("thread").pipe(
     threadStartCommand,
     threadSendCommand,
     threadShowCommand,
+    threadToolUsageCommand,
   ]),
 );

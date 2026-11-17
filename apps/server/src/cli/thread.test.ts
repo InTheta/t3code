@@ -1,7 +1,7 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { AuthSessionId, ProjectId, RunId, ThreadId } from "@t3tools/contracts";
+import { AuthSessionId, ProjectId, RunId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NetService from "@t3tools/shared/Net";
 import * as ConfigProvider from "effect/ConfigProvider";
@@ -23,6 +23,7 @@ import {
   persistServerRuntimeState,
 } from "../serverRuntimeState.ts";
 import {
+  countObservedToolCalls,
   readLatestMessages,
   resolveProject,
   threadCommand,
@@ -528,3 +529,39 @@ it.live("resolves a path inside a git worktree of the project's repository to th
     assert.include(ambiguous.message, "feature (project-feature)");
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+it("counts each native tool item once on the exact local turn", () => {
+  const tool = {
+    visibility: "local" as const,
+    sourceThreadId: threadId,
+    runId,
+    type: "command_execution",
+    itemId: TurnItemId.make("command"),
+  };
+  const otherItems = [
+    {
+      ...tool,
+      itemId: TurnItemId.make(
+        `turn-item:provider:codex:native-item:${encodeURIComponent(`workspace-preparation:${runId}`)}`,
+      ),
+    },
+    { ...tool, visibility: "inherited" as const },
+    { ...tool, runId: RunId.make("another-run") },
+    { ...tool, sourceThreadId: ThreadId.make("another-thread") },
+    { ...tool, type: "assistant_message" },
+  ];
+  assert.equal(countObservedToolCalls(otherItems, threadId, runId), 0);
+  assert.equal(
+    countObservedToolCalls(
+      [
+        ...otherItems,
+        tool,
+        tool,
+        { ...tool, type: "dynamic_tool", itemId: TurnItemId.make("read") },
+      ],
+      threadId,
+      runId,
+    ),
+    2,
+  );
+});
