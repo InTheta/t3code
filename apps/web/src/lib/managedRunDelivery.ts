@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const CommitSha = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/));
 const Tokens = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }));
 const ManagedRun = Schema.Struct({
   version: Schema.Literal(1),
@@ -11,7 +12,7 @@ const ManagedRun = Schema.Struct({
   brief: Schema.Struct({
     workspaceId: Schema.String,
     repository: Schema.String,
-    baseSha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)),
+    baseSha: CommitSha,
     scope: Schema.String,
     tokens: Tokens,
   }),
@@ -20,6 +21,14 @@ const ManagedRun = Schema.Struct({
     used: Schema.NullOr(Tokens),
     remaining: Schema.NullOr(Tokens),
   }),
+  qa: Schema.optionalKey(
+    Schema.Struct({
+      reviewedSha: CommitSha,
+      verdict: Schema.Literals(["pass", "fail"]),
+      source: Schema.Literals(["provider", "operator"]),
+      budgetExceeded: Schema.Boolean,
+    }),
+  ),
   stages: Schema.Array(
     Schema.Struct({
       stageId: Schema.String,
