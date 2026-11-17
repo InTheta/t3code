@@ -1,6 +1,28 @@
+import { ThreadId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 
 import type { ManagedRun } from "~/lib/managedRunDelivery";
+import { useQuietThreadShell } from "~/state/entities";
+import { usePrimaryEnvironmentId } from "~/state/environments";
+
+function WorkerThread({ id }: { id: string | null }) {
+  const environmentId = usePrimaryEnvironmentId();
+  const ref = environmentId && id ? { environmentId, threadId: ThreadId.make(id) } : null;
+  const thread = useQuietThreadShell(ref);
+  return (
+    <p>
+      Thread {id ?? "Unknown"}
+      {ref && thread && (
+        <>
+          {" · "}
+          <Link className="underline" to="/$environmentId/$threadId" params={ref}>
+            Open worker thread
+          </Link>
+        </>
+      )}
+    </p>
+  );
+}
 
 function formatCount(value: number | null): string {
   return value === null ? "Unknown" : value.toLocaleString();
@@ -49,7 +71,7 @@ export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
               </p>
               <p>Stage ID {stage.stageId}</p>
               <p>Provider instance {stage.providerInstanceId ?? "Unknown"}</p>
-              <p>Thread {stage.threadId ?? "Unknown"}</p>
+              <WorkerThread id={stage.threadId} />
               <p>Tool calls {formatCount(stage.toolCalls ?? null)}</p>
               {stage.status === "waiting_for_operator" && (
                 <p className="mt-1 text-muted-foreground">
