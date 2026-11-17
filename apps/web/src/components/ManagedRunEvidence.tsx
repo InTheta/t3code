@@ -32,6 +32,7 @@ export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
   const { brief, budget, qa } = run;
   const fields = [
     ["Run ID", run.runId],
+    ...(run.traceId ? [["Langfuse correlation ID", run.traceId]] : []),
     ["Status", run.status],
     ["Brief revision", run.revision],
     ["Workspace", brief.workspaceId],
