@@ -1,6 +1,5 @@
 import {
   AuthOrchestrationOperateScope,
-  PRIMARY_LOCAL_ENVIRONMENT_ID,
   type EnvironmentId,
   type ScopedThreadRef,
   type ThreadId,
@@ -28,6 +27,7 @@ import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import { canShareWithGuestAtom } from "./guestShareAvailability";
 import { useAtomValue } from "@effect/atom-react";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
@@ -90,6 +90,7 @@ export const ChatHeader = memo(function ChatHeader({
   const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
   const breadcrumbContainerRef = useRef<HTMLDivElement>(null);
   const [collapseParentTitle, setCollapseParentTitle] = useState(false);
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const activeThreadRef = scopeThreadRef(activeThreadEnvironmentId, activeThreadId);
   const canOperateThread = useEnvironmentScope(
     activeThreadEnvironmentId,
@@ -401,7 +402,7 @@ export const ChatHeader = memo(function ChatHeader({
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
       {canOperateThread &&
-        activeThreadEnvironmentId === PRIMARY_LOCAL_ENVIRONMENT_ID &&
+        activeThreadEnvironmentId === primaryEnvironmentId &&
         typeof window !== "undefined" &&
         window.desktopBridge && <IsolatedBriefDialog key={activeThreadId} />}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
