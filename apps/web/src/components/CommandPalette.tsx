@@ -1699,6 +1699,22 @@ function OpenCommandPaletteDialog(props: {
     },
   });
 
+  actionItems.push({
+    kind: "action",
+    value: "action:workflow",
+    searchTerms: ["workflow", "agents", "delegation", "delivery"],
+    title: "Open Workflow",
+    icon: <ChartNoAxesColumnIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      const thread =
+        paletteRouteTarget?.kind === "server" ? paletteRouteTarget.threadRef : undefined;
+      await navigate({
+        to: "/workflow",
+        search: { environment: thread?.environmentId, thread: thread?.threadId, run: undefined },
+      });
+    },
+  });
+
   for (const direction of [1, -1] as const) {
     const title = direction === 1 ? "Focus Next Workspace Area" : "Focus Previous Workspace Area";
     actionItems.push({

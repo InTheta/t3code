@@ -69,6 +69,7 @@ import {
 import { getProviderOptionCurrentValue, withLegacyUltracodeEffort } from "@t3tools/shared/model";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
+import { planningQuota } from "@t3tools/shared/planningQuota";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { threadPullRequestUpdatedAtMs } from "@t3tools/shared/threadPullRequests";
 import {
@@ -2683,6 +2684,19 @@ const make = Effect.gen(function* () {
         parent.thread.interactionMode,
         input.interactionMode,
       );
+      if (interactionMode === "plan" && !isRetryOfAcceptedDelegation) {
+        const quota = planningQuota(
+          providers.find((provider) => provider.instanceId === target.modelSelection.instanceId),
+          target.modelSelection.model,
+          DateTime.toEpochMillis(yield* DateTime.now),
+        );
+        if (quota.kind === "limited") {
+          return yield* failure(
+            "invalid_request",
+            "The planning worker is near its usage limit. Stop delegation and ask the user to approve a different worker. Do not retry with another account or model on your own.",
+          );
+        }
+      }
       let workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy | undefined;
       if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
         const project = yield* requireProject(parent.thread.projectId);
