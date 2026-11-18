@@ -1,10 +1,17 @@
-import { ArrowLeftIcon, ArrowRightIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ChartNoAxesColumnIcon,
+  SettingsIcon,
+  WorkflowIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useAtomValue } from "@effect/atom-react";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { useThreadRouteTarget } from "../../hooks/useThreadRouteTarget";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {
   navigateHistory,
@@ -220,6 +227,7 @@ function SidebarUtilityItem({
 
 const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
+  const threadTarget = useThreadRouteTarget();
   const navigateToMainApp = useNavigateToMainApp();
   const { isMobile, setOpenMobile } = useSidebar();
   const isOnUtilityPage = useLocation({
@@ -284,6 +292,22 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             onClick={() => {
               closeMobileSidebar();
               void navigate({ to: "/delivery", search: { ticket: undefined } });
+            }}
+          />
+          <SidebarUtilityItem
+            icon={<WorkflowIcon />}
+            label="Workflow"
+            onClick={() => {
+              closeMobileSidebar();
+              const thread = threadTarget?.kind === "server" ? threadTarget.threadRef : undefined;
+              void navigate({
+                to: "/workflow",
+                search: {
+                  environment: thread?.environmentId,
+                  thread: thread?.threadId,
+                  run: undefined,
+                },
+              });
             }}
           />
           <SidebarUtilityItem

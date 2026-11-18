@@ -72,32 +72,37 @@ export function usageLimitsBannerItem(
 export function modelFallbackBannerItem({
   fallbackModelName,
   defaultProviderName,
-  defaultModelName,
+  fallbackProviderName,
   resetsAt,
   timestampFormat,
-  onUseDefault,
+  onApprove,
   onDismiss,
 }: {
   readonly fallbackModelName: string;
   readonly defaultProviderName: string;
-  readonly defaultModelName: string;
+  readonly fallbackProviderName: string;
   readonly resetsAt: string | null;
   readonly timestampFormat: TimestampFormat;
-  readonly onUseDefault: () => void;
+  readonly onApprove: () => void;
   readonly onDismiss: () => void;
 }): ComposerBannerStackItem {
   return {
     id: "fallback-model",
     variant: "info",
     icon: <GaugeIcon />,
-    title: `Using ${fallbackModelName}`,
+    title: `Switch to ${fallbackModelName} on ${fallbackProviderName}?`,
     description: `${defaultProviderName} is out of usage${resetsAt ? ` · resets ${formatUpcomingTimestamp(resetsAt, timestampFormat)}` : ""}`,
     actions: (
-      <Button size="xs" variant="ghost" onClick={onUseDefault}>
-        Use {defaultModelName}
-      </Button>
+      <>
+        <Button size="xs" variant="ghost" onClick={onApprove}>
+          Approve switch
+        </Button>
+        <Button size="xs" variant="ghost" onClick={onDismiss}>
+          Decline switch
+        </Button>
+      </>
     ),
-    dismissLabel: "Dismiss fallback model notice",
+    dismissLabel: "Dismiss fallback model offer",
     onDismiss,
   };
 }

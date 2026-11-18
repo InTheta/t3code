@@ -32,6 +32,15 @@ const ManagedRun = Schema.Struct({
       budgetExceeded: Schema.Boolean,
     }),
   ),
+  workflowEvents: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        kind: Schema.Literals(["langgraph-stage-queued", "symphony-controller-accepted"]),
+        at: Schema.String,
+        stageId: Schema.String,
+      }),
+    ),
+  ),
   stages: Schema.Array(
     Schema.Struct({
       stageId: Schema.String,
