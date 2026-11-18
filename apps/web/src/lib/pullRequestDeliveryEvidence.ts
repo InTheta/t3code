@@ -7,6 +7,7 @@ export interface PullRequestDelivery {
   version: 1;
   pullRequest: { repository: string; number: number; head: string; url: string };
   candidate: string | null;
+  managedRunId?: string;
   qa: { status: string; head?: string; freshness?: string };
   ci: { status: string; head?: string; runId?: number };
   previousCi?: { status: string; head: string; runId?: number } | null;
