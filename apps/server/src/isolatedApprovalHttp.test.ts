@@ -67,6 +67,35 @@ it("forwards only explicit approvals from the configured authenticated operator"
     const [prepareUrl, prepared] = upstream.mock.calls[1] ?? [];
     expect(String(prepareUrl)).toBe("http://127.0.0.1:45678/isolated-approval/v1/prepare");
     expect(new TextDecoder().decode(prepared?.body as Uint8Array<ArrayBuffer>)).toBe(draft);
+    const runId = "537729d4-a075-4bed-9fd7-8a63eb4cb0bd";
+    const handoff = JSON.stringify({
+      runId,
+      stageId: `${runId}:implementation`,
+      revision: "b".repeat(64),
+      decision: "decline",
+    });
+    subject = "scheduler";
+    expect((await send(handoff, "Bearer t3-session", undefined, "handoff/decide")).status).toBe(
+      403,
+    );
+    subject = "operator";
+    expect(
+      (
+        await send(
+          handoff.replace("decline", "auto"),
+          "Bearer t3-session",
+          undefined,
+          "handoff/decide",
+        )
+      ).status,
+    ).toBe(400);
+    expect(upstream).toHaveBeenCalledTimes(2);
+    expect((await send(handoff, "Bearer t3-session", undefined, "handoff/decide")).status).toBe(
+      200,
+    );
+    const [handoffUrl, decision] = upstream.mock.calls[2] ?? [];
+    expect(String(handoffUrl)).toBe("http://127.0.0.1:45678/isolated-approval/v1/handoff/decide");
+    expect(new TextDecoder().decode(decision?.body as Uint8Array<ArrayBuffer>)).toBe(handoff);
   } finally {
     await dispose();
     upstream.mockRestore();
