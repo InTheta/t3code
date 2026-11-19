@@ -6,7 +6,13 @@ const os = require("node:os");
 
 // afterPack runs before signing and installer creation, against the final ASAR layout.
 module.exports = async ({ appOutDir, electronPlatformName, arch, packager }) => {
-  if (!["darwin", "win32", "linux"].includes(electronPlatformName)) {
+  // The optional cache is populated at runtime. Shipping its entries in the
+  // Windows installer can exceed the packaged payload file-count limit.
+  if (electronPlatformName === "win32") {
+    console.log("[server-compile-cache] Skipping Windows installer cache");
+    return;
+  }
+  if (!["darwin", "linux"].includes(electronPlatformName)) {
     console.log(`[server-compile-cache] Skipping unsupported target ${electronPlatformName}`);
     return;
   }
@@ -38,10 +44,7 @@ module.exports = async ({ appOutDir, electronPlatformName, arch, packager }) => 
   const executable =
     electronPlatformName === "darwin"
       ? path.join(appOutDir, `${product}.app`, "Contents", "MacOS", product)
-      : path.join(
-          appOutDir,
-          electronPlatformName === "win32" ? `${product}.exe` : packager.executableName,
-        );
+      : path.join(appOutDir, packager.executableName);
   const helper = path.join(
     resources,
     "app.asar",

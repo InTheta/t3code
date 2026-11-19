@@ -7,6 +7,7 @@ import { expect, it } from "vite-plus/test";
 import { cacheKey, seedPreparedCache } from "./server-compile-cache.ts";
 
 it.each([
+  { platform: "win32", hostArch: "x64", arch: 1, reason: "Windows installer cache" },
   { platform: "freebsd", hostArch: "x64", arch: 1, reason: "unsupported target freebsd" },
   { platform: "linux", hostArch: "x64", arch: 3, reason: "unexecutable target linux/arm64" },
   { platform: "linux", hostArch: "arm64", arch: 1, reason: "unexecutable target linux/x64" },
