@@ -205,6 +205,7 @@ it("shows failed and replacement attempts with unknown and zero usage distinguis
           attemptId: "replacement",
           providerInstanceId: "claudeAgent",
           actualModel: "claude-sonnet",
+          requestedReasoningEffort: "low",
           status: "completed",
           usageStatus: "complete",
           tokens: { ...tokens, cachedInputTokens: 0, outputTokens: 15 },
@@ -223,4 +224,5 @@ it("shows failed and replacement attempts with unknown and zero usage distinguis
   const counts = replacement.element().closest("details")?.querySelectorAll("dd");
   expect(counts?.[1]?.textContent).toBe("0");
   expect(counts?.[3]?.textContent).toBe("15");
+  expect(counts?.[5]?.textContent).toBe("low");
 });

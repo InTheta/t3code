@@ -119,6 +119,8 @@ export function ManagedRunEvidence({
                       <dd>{formatCount(attempt.tokens.outputTokens)}</dd>
                       <dt>Reasoning tokens</dt>
                       <dd>{formatCount(attempt.tokens.reasoningTokens)}</dd>
+                      <dt>Requested reasoning</dt>
+                      <dd>{attempt.requestedReasoningEffort ?? "Unknown"}</dd>
                     </dl>
                   </details>
                 ))}
