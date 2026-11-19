@@ -58,6 +58,20 @@ it("links an operator wait to the locally known worker and preserves unknown evi
   await expect.element(screen.getByText("Tool calls Unknown")).toBeVisible();
 });
 
+it("shows a provider quota pause and the original worker link", async () => {
+  const stages = run.stages.map((stage) =>
+    stage.stageId === "known" ? { ...stage, status: "paused_provider_quota" } : stage,
+  );
+  await using screen = await render(<ManagedRunEvidence run={{ ...run, stages }} />);
+  await expect.element(screen.getByText("implementation · Paused on provider quota")).toBeVisible();
+  await expect
+    .element(screen.getByText("Open the worker thread to inspect the usage limit."))
+    .toBeVisible();
+  await expect
+    .element(screen.getByRole("link", { name: "Open worker thread" }))
+    .toHaveAttribute("href", "/windows-fixture/mcp%3Alaunch%3Aknown");
+});
+
 it("shows the exact reviewed commit and reports a budget overrun separately from the verdict", async () => {
   const reviewedSha = "715f6adc7f373f7e17fb2f41a2dc373e8785caca";
   await using screen = await render(

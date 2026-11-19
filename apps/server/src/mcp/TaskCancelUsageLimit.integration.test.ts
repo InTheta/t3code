@@ -333,6 +333,10 @@ it.effect.each([
         yield* Fiber.join(childFailed);
         yield* worker.drain();
 
+        const failedThread = yield* service.readThread(scope, { threadId: childThreadId });
+        assert.equal(failedThread.thread.latestRunId, child.turn.runId);
+        assert.equal(failedThread.thread.latestRunFailureClass, "usage_limit");
+
         // The sweep runs every few seconds, so it arms the child before a parent reacts.
         yield* sweep;
         if (cancel === "after its limit") cancelled = yield* cancelTask;
@@ -345,6 +349,11 @@ it.effect.each([
           childAfter.messages.flatMap((message) => (message.role === "user" ? [message.text] : [])),
           resumed ? ["Review the change", "Continue where you left off."] : ["Review the change"],
         );
+        if (resumed) {
+          const continuedThread = yield* service.readThread(scope, { threadId: childThreadId });
+          assert.notEqual(continuedThread.thread.latestRunId, child.turn.runId);
+          assert.isUndefined(continuedThread.thread.latestRunFailureClass);
+        }
       }).pipe(Effect.provide(layerTest));
     }),
 );
