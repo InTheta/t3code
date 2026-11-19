@@ -49,6 +49,7 @@ const ManagedRun = Schema.Struct({
         providerInstanceId: Schema.String,
         status: Schema.String,
         actualModel: Schema.NullOr(Schema.String),
+        requestedReasoningEffort: Schema.optionalKey(Schema.NullOr(Schema.String)),
         usageStatus: Schema.String,
         tokens: Schema.Struct({
           inputTokens: Schema.NullOr(Tokens),
