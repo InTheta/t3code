@@ -32,6 +32,7 @@ function formatCount(value: number | null): string {
 const stageStatusLabels = new Map([
   ["waiting_for_operator", "Waiting for operator"],
   ["paused_provider_quota", "Paused on provider quota"],
+  ["cancelling_quota", "Cancelling provider replacement"],
 ]);
 
 export function ManagedRunEvidence({

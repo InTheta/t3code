@@ -395,6 +395,14 @@ it.effect.each([
           assert.equal(replacement.providerThread.providerInstanceId, replacementInstance);
           assert.notEqual(replacement.providerThread.id, child.turn.providerThread.id);
           assert.lengthOf(replacementProjection.runs, 2);
+          const recovered = yield* service.readThread(scope, { threadId: childThreadId });
+          assert.equal(recovered.thread.latestRunId, replay.run.id);
+          assert.deepEqual(recovered.thread.latestRunContinuation, {
+            sourceRunId: child.turn.runId,
+            commandMessageId: "approved:quota-replacement",
+            providerInstanceId: replacementInstance,
+            model: replacementModel.model,
+          });
           assert.ok(
             replacementProjection.contextHandoffs.some(
               (handoff) => handoff.toProviderThreadId === replacement.providerThread.id,
