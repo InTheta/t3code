@@ -6,12 +6,26 @@ import { expect, it, vi } from "vite-plus/test";
 
 import { EnvironmentAuth } from "./auth/EnvironmentAuth.ts";
 import { layer } from "./isolatedApprovalHttp.ts";
+import {
+  ThreadManagementService,
+  type ThreadManagementSendResult,
+} from "./orchestration-v2/ThreadManagementService.ts";
 
 it("forwards only explicit approvals from the configured authenticated operator", async () => {
   vi.stubEnv("T3CODE_ISOLATED_APPROVAL_PORT", "45678");
   vi.stubEnv("T3CODE_ISOLATED_APPROVAL_TOKEN", "sidecar-test-token");
   vi.stubEnv("T3CODE_ISOLATED_APPROVAL_SUBJECT", "operator");
   let subject = "different-account";
+  const sendToThread = vi.fn(
+    (input: Parameters<ThreadManagementService["Service"]["sendToThread"]>[0]) =>
+      Effect.succeed({
+        run: {
+          threadId: input.threadId,
+          id: "new-turn",
+          manualContinuationOfRunId: input.manualContinuationOfRunId,
+        },
+      } as ThreadManagementSendResult),
+  );
   const upstream = vi
     .spyOn(globalThis, "fetch")
     .mockImplementation(async () =>
@@ -20,6 +34,7 @@ it("forwards only explicit approvals from the configured authenticated operator"
   const { handler, dispose } = HttpRouter.toWebHandler(
     layer.pipe(
       Layer.provideMerge(FetchHttpClient.layer),
+      Layer.provideMerge(Layer.mock(ThreadManagementService)({ sendToThread })),
       Layer.provideMerge(
         Layer.mock(EnvironmentAuth)({
           authenticateHttpRequest: () =>
@@ -96,6 +111,54 @@ it("forwards only explicit approvals from the configured authenticated operator"
     const [handoffUrl, decision] = upstream.mock.calls[2] ?? [];
     expect(String(handoffUrl)).toBe("http://127.0.0.1:45678/isolated-approval/v1/handoff/decide");
     expect(new TextDecoder().decode(decision?.body as Uint8Array<ArrayBuffer>)).toBe(handoff);
+
+    vi.stubEnv("T3CODE_ISOLATED_QUOTA_CONTINUATION", "1");
+    const identity = { runId, stageId: `${runId}:implementation`, revision: "b".repeat(64) };
+    const approval = { ...identity, decision: "approve" };
+    const modelSelection = { instanceId: "codex-replacement", model: "codex-test" };
+    let recordedTurn: string | null = null;
+    let droppedReceipt = true;
+    upstream.mockImplementation(async (url) => {
+      if (String(url).endsWith("/decide")) return Response.json(approval);
+      if (String(url).endsWith("/continuation")) {
+        return Response.json({
+          ...identity,
+          threadId: "isolated-thread",
+          projectId: "isolated-project",
+          originalTurnId: "old-turn",
+          modelSelection,
+          replacementTurnId: recordedTurn,
+        });
+      }
+      if (String(url).endsWith("/receipt")) {
+        if (droppedReceipt) {
+          droppedReceipt = false;
+          return Response.json({}, { status: 503 });
+        }
+        recordedTurn = "new-turn";
+        return Response.json({
+          ...identity,
+          threadId: "isolated-thread",
+          replacementTurnId: recordedTurn,
+        });
+      }
+      throw new Error("Unexpected request");
+    });
+    const approve = () =>
+      send(JSON.stringify(approval), "Bearer t3-session", undefined, "handoff/decide");
+    expect((await approve()).status).toBe(502);
+    expect(await (await approve()).json()).toEqual({ ...approval, replacementTurnId: "new-turn" });
+    expect(await (await approve()).json()).toEqual({ ...approval, replacementTurnId: "new-turn" });
+    expect(sendToThread).toHaveBeenCalledTimes(2);
+    expect(sendToThread.mock.calls[0]).toEqual(sendToThread.mock.calls[1]);
+    expect(sendToThread.mock.calls[0]?.[0]).toMatchObject({
+      commandId: `isolated-quota:${identity.revision}`,
+      messageId: `isolated-quota:${identity.revision}`,
+      projectId: "isolated-project",
+      threadId: "isolated-thread",
+      manualContinuationOfRunId: "old-turn",
+      modelSelection,
+    });
   } finally {
     await dispose();
     upstream.mockRestore();

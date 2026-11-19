@@ -164,5 +164,16 @@ it.each(["approve", "decline"] as const)(
       )
       .toBeVisible();
     expect(post.mock.calls[1]).toEqual(["handoff/decide", { ...identity, revision, decision }]);
+    if (decision === "approve") {
+      post.mockResolvedValueOnce({
+        ...identity,
+        revision,
+        decision,
+        replacementTurnId: "exact-turn",
+      });
+      await dialog.getByRole("button", { name: "Retry approved replacement" }).click();
+      await expect.element(dialog.getByText("Replacement turn recorded.")).toBeVisible();
+      expect(post.mock.calls[2]).toEqual(post.mock.calls[1]);
+    }
   },
 );
