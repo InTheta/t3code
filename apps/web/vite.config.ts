@@ -345,6 +345,8 @@ export default defineConfig(({ command }) => {
         "@pierre/diffs/edit",
         "@pierre/diffs/react",
         "@pierre/diffs/worker/worker.js",
+        "@pierre/trees",
+        "@pierre/trees/react",
         "effect/Array",
         "effect/Order",
         "react-dom/client",

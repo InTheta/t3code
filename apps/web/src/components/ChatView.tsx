@@ -830,8 +830,7 @@ export default function ChatView(props: ChatViewProps) {
     ? buildLocalDraftThread(
         threadId,
         draftThread,
-        (draftFallback ? draftFallback.selection : draftDefaultModelSelection) ??
-          NO_PROVIDER_MODEL_SELECTION,
+        draftDefaultModelSelection ?? NO_PROVIDER_MODEL_SELECTION,
       )
     : undefined;
   const isServerThread = serverThread !== null;
@@ -1144,10 +1143,7 @@ export default function ChatView(props: ChatViewProps) {
   const activeProjectScripts = activeProject ? resolveProjectScripts(settings, activeProject) : [];
   const { projectCloneBannerItem, projectCloneSendBlockReason } =
     useProjectCloneBanner(activeProjectRef);
-  const activeProjectDefaultModelSelection =
-    !isServerThread && draftFallback
-      ? draftFallback.selection
-      : activeProjectSettings.settings.defaultModelSelection;
+  const activeProjectDefaultModelSelection = activeProjectSettings.settings.defaultModelSelection;
   const handleNewThreadInActiveProject = () => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   };
@@ -2623,8 +2619,8 @@ export default function ChatView(props: ChatViewProps) {
       !composerModelSelectionExplicit &&
       draftFallback?.fallback &&
       (!composerSelectedModelSelection ||
-        (composerSelectedModelSelection.instanceId === fallbackSelection?.instanceId &&
-          composerSelectedModelSelection.model === fallbackSelection?.model))
+        (composerSelectedModelSelection.instanceId === defaultSelection?.instanceId &&
+          composerSelectedModelSelection.model === defaultSelection?.model))
         ? draftFallback.fallback
         : null;
     const fallbackWindow = fallback
@@ -2643,13 +2639,19 @@ export default function ChatView(props: ChatViewProps) {
                   ?.models.find((model) => model.slug === fallbackSelection.model)?.name ??
                 fallbackSelection.model,
               defaultProviderName: fallback.provider.displayName ?? fallback.provider.driver,
-              defaultModelName:
-                fallback.provider.models.find((model) => model.slug === defaultSelection.model)
-                  ?.name ?? defaultSelection.model,
+              fallbackProviderName:
+                providerStatuses.find(
+                  (provider) => provider.instanceId === fallbackSelection.instanceId,
+                )?.displayName ?? fallbackSelection.instanceId,
               resetsAt: fallback.resetsAt,
               timestampFormat,
-              onUseDefault: () =>
-                onProviderModelSelectStable(defaultSelection.instanceId, defaultSelection.model),
+              onApprove: () =>
+                useComposerDraftStore
+                  .getState()
+                  .setModelSelection(composerDraftTarget, fallbackSelection, {
+                    explicit: true,
+                    replaceOptions: true,
+                  }),
               onDismiss: () => setDismissedFallbackWindow(fallbackWindow),
             }),
           ]

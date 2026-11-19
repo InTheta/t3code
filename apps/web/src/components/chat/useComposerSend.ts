@@ -23,6 +23,7 @@ import {
   type ModelSelection,
   type PreviewAnnotationPayload,
   type ScopedThreadRef,
+  type ServerProvider,
   type ThreadId,
   ProviderInteractionMode,
   RuntimeMode,
@@ -164,6 +165,19 @@ type LocalDispatchState = ReturnType<typeof useLocalDispatchState>;
 type DraftEnvironmentRouting = ReturnType<typeof useDraftEnvironmentRouting>;
 type UsageLimitsPanel = ReturnType<typeof useUsageLimitsPanel>;
 type TimelineFollow = ReturnType<typeof useTimelineFollow>;
+
+export interface PlanOnlyDispatch {
+  readonly planner: ModelSelection;
+  readonly provider: ServerProvider;
+  readonly confirmedSwitch?: { readonly from: string; readonly to: string };
+  readonly inventoryTarget?:
+    | {
+        providerInstanceId: ModelSelection["instanceId"];
+        model: string;
+        options: ModelSelection["options"];
+      }
+    | undefined;
+}
 
 interface ComposerSendInput {
   readonly environmentId: EnvironmentId;
@@ -383,11 +397,20 @@ export function useComposerSend(input: ComposerSendInput) {
       annotation: PreviewAnnotationPayload;
       image: ComposerImageAttachment | null;
     },
+    planOnly?: PlanOnlyDispatch,
   ) => {
     e?.preventDefault();
     // What the user pressed send on; uploads below can take a while, and a redirect must not
     // decline approvals for a draft that changed meanwhile.
     const promptAtSend = promptRef.current;
+    if (planOnly && promptAtSend.trimStart().startsWith("/")) {
+      toastManager.add({
+        type: "warning",
+        title: "Enter a planning brief",
+        description: "Use the regular Send button for slash commands.",
+      });
+      return;
+    }
     if (
       usageLimitsOffered &&
       usageLimitsKey !== null &&
@@ -586,8 +609,11 @@ export function useComposerSend(input: ComposerSendInput) {
       selectedModel: ctxSelectedModel,
       selectedProviderModels: ctxSelectedProviderModels,
       selectedPromptEffort: ctxSelectedPromptEffort,
-      selectedModelSelection: ctxSelectedModelSelection,
+      selectedModelSelection,
     } = sendCtx;
+    const ctxSelectedModelSelection = planOnly?.planner ?? selectedModelSelection;
+    const interactionMode = planOnly ? "plan" : DEFAULT_INTERACTION_MODE;
+    const turnRuntimeMode = planOnly ? "approval-required" : runtimeMode;
     const { images: composerImages, previewAnnotations: composerPreviewAnnotations } =
       mergeDirectPreviewAnnotation({
         images: sendContextImages,
@@ -833,11 +859,30 @@ export function useComposerSend(input: ComposerSendInput) {
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
     const outgoingMessageText = formatOutgoingPrompt({
-      provider: ctxSelectedProvider,
-      model: ctxSelectedModel,
-      models: ctxSelectedProviderModels,
-      effort: ctxSelectedPromptEffort,
-      text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
+      provider: planOnly?.provider.driver ?? ctxSelectedProvider,
+      model: planOnly?.planner.model ?? ctxSelectedModel,
+      models: planOnly?.provider.models ?? ctxSelectedProviderModels,
+      effort: planOnly
+        ? String(
+            planOnly.planner.options?.find(
+              (entry) => entry.id === "reasoningEffort" || entry.id === "effort",
+            )?.value ?? "",
+          ) || null
+        : ctxSelectedPromptEffort,
+      text: planOnly
+        ? [
+            messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
+            ...(planOnly.confirmedSwitch
+              ? [
+                  `Quota switch approved for this turn: ${planOnly.confirmedSwitch.from} → ${planOnly.confirmedSwitch.to}.`,
+                ]
+              : []),
+            "Plan only. Do not edit files, commit, deploy, or start implementation. Return scopes, owners, acceptance tests and a rollback plan, then stop for approval.",
+            planOnly.inventoryTarget
+              ? `If inventory is needed, delegate it in Plan mode with role research to this exact target: ${JSON.stringify(planOnly.inventoryTarget)}. If it cannot launch, report the reason and do inventory yourself. Do not substitute a model or account.`
+              : "Do inventory yourself. No delegated target was selected.",
+          ].join("\n\n")
+        : messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
     });
     if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) {
       return;
@@ -1185,7 +1230,7 @@ export function useComposerSend(input: ComposerSendInput) {
     });
     const threadCreateModelSelection = createModelSelection(
       ctxSelectedModelSelection.instanceId,
-      ctxSelectedModel || activeProjectDefaultModelSelection?.model || DEFAULT_MODEL,
+      ctxSelectedModelSelection.model || activeProjectDefaultModelSelection?.model || DEFAULT_MODEL,
       ctxSelectedModelSelection.options,
     );
 
@@ -1198,8 +1243,8 @@ export function useComposerSend(input: ComposerSendInput) {
         ...(localCheckoutBranchMismatch
           ? { branch: localCheckoutBranchMismatch.currentBranch }
           : {}),
-        runtimeMode,
-        interactionMode: DEFAULT_INTERACTION_MODE,
+        runtimeMode: turnRuntimeMode,
+        interactionMode,
       });
       if (settingsResult._tag === "Failure") {
         failure = settingsResult;
@@ -1218,7 +1263,7 @@ export function useComposerSend(input: ComposerSendInput) {
       failure = turnAttachmentsResult;
     }
 
-    if (failure === null && compactBeforeSend) {
+    if (failure === null && compactBeforeSend && !planOnly) {
       const compactResult = await startThreadTurn({
         environmentId,
         input: {
@@ -1231,8 +1276,8 @@ export function useComposerSend(input: ComposerSendInput) {
             idleCompaction: "onReturn",
           },
           modelSelection: ctxSelectedModelSelection,
-          runtimeMode,
-          interactionMode: DEFAULT_INTERACTION_MODE,
+          runtimeMode: turnRuntimeMode,
+          interactionMode,
         },
       });
       if (compactResult._tag === "Failure") {
@@ -1252,8 +1297,8 @@ export function useComposerSend(input: ComposerSendInput) {
                       projectId: activeProject.id,
                       title,
                       modelSelection: threadCreateModelSelection,
-                      runtimeMode,
-                      interactionMode: DEFAULT_INTERACTION_MODE,
+                      runtimeMode: turnRuntimeMode,
+                      interactionMode,
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
                       createdAt: activeThread.createdAt,
@@ -1301,8 +1346,8 @@ export function useComposerSend(input: ComposerSendInput) {
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
-          runtimeMode,
-          interactionMode: DEFAULT_INTERACTION_MODE,
+          runtimeMode: turnRuntimeMode,
+          interactionMode,
           dispatchMode: turnDispatchMode,
           ...(freshArm === undefined ? {} : { freshContext: true }),
           ...(bootstrap ? { bootstrap } : {}),

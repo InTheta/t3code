@@ -1,17 +1,21 @@
 import * as Schema from "effect/Schema";
 
+import { fetchDeliverySidecar } from "~/lib/deliverySidecarFetch";
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const CommitSha = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/));
 const Tokens = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }));
 const ManagedRun = Schema.Struct({
   version: Schema.Literal(1),
   runId: Schema.String.check(Schema.isPattern(uuid)),
   ticket: Schema.String,
+  traceId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-f0-9]{32}$/))),
   revision: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
   status: Schema.String,
   brief: Schema.Struct({
     workspaceId: Schema.String,
     repository: Schema.String,
-    baseSha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)),
+    baseSha: CommitSha,
     scope: Schema.String,
     tokens: Tokens,
   }),
@@ -20,6 +24,23 @@ const ManagedRun = Schema.Struct({
     used: Schema.NullOr(Tokens),
     remaining: Schema.NullOr(Tokens),
   }),
+  qa: Schema.optionalKey(
+    Schema.Struct({
+      reviewedSha: CommitSha,
+      verdict: Schema.Literals(["pass", "fail"]),
+      source: Schema.Literals(["provider", "operator"]),
+      budgetExceeded: Schema.Boolean,
+    }),
+  ),
+  workflowEvents: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        kind: Schema.Literals(["langgraph-stage-queued", "symphony-controller-accepted"]),
+        at: Schema.String,
+        stageId: Schema.String,
+      }),
+    ),
+  ),
   stages: Schema.Array(
     Schema.Struct({
       stageId: Schema.String,
@@ -42,7 +63,10 @@ export function parseManagedRunId(input: unknown): string | undefined {
 }
 
 export function parseManagedRun(input: unknown, requestedRunId: string): ManagedRun | null {
-  return isManagedRun(input) && input.runId === requestedRunId ? input : null;
+  if (!isManagedRun(input) || input.runId !== requestedRunId) return null;
+  return input.traceId === undefined || input.traceId === input.runId.replaceAll("-", "")
+    ? input
+    : null;
 }
 
 export async function readManagedRun(
@@ -50,10 +74,10 @@ export async function readManagedRun(
   signal: AbortSignal,
 ): Promise<ManagedRun | null> {
   try {
-    const response = await fetch(`/delivery-sidecar/v1/managed-runs/${encodeURIComponent(runId)}`, {
-      cache: "no-store",
+    const response = await fetchDeliverySidecar(
+      `/delivery-sidecar/v1/managed-runs/${encodeURIComponent(runId)}`,
       signal,
-    });
+    );
     return response.ok ? parseManagedRun(await response.json(), runId) : null;
   } catch {
     return null;
