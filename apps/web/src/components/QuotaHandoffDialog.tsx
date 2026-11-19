@@ -18,6 +18,7 @@ const Receipt = Schema.Struct({
   stageId: Schema.String,
   revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
   decision: Decision,
+  replacementTurnId: Schema.optionalKey(Schema.String),
 });
 const Proposal = Schema.Struct({
   ...Receipt.fields,
@@ -44,6 +45,7 @@ type HandoffProps = { run: ManagedRun; stage: ManagedRun["stages"][number] };
 function HandoffReview({ run, stage }: HandoffProps) {
   const [proposal, setProposal] = useState<typeof Proposal.Type>();
   const [decision, setDecision] = useState<typeof Decision.Type>();
+  const [replacementTurnId, setReplacementTurnId] = useState<string>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const identity = { runId: run.runId, stageId: stage.stageId };
@@ -68,6 +70,7 @@ function HandoffReview({ run, stage }: HandoffProps) {
       }
       setProposal(value);
       setDecision(value.decision);
+      setReplacementTurnId(value.replacementTurnId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Replacement review failed.");
     } finally {
@@ -76,7 +79,7 @@ function HandoffReview({ run, stage }: HandoffProps) {
   }
 
   async function decide(choice: typeof Decision.Type) {
-    if (!proposal || pending || decision) return;
+    if (!proposal || pending || decision === "decline" || replacementTurnId) return;
     setPending(true);
     setError(undefined);
     try {
@@ -95,6 +98,7 @@ function HandoffReview({ run, stage }: HandoffProps) {
         throw new Error("Decision receipt unavailable. Retry the same decision to recover it.");
       }
       setDecision(value.decision);
+      setReplacementTurnId(value.replacementTurnId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Replacement decision failed.");
     } finally {
@@ -128,11 +132,20 @@ function HandoffReview({ run, stage }: HandoffProps) {
             {proposal.availableTokens.toLocaleString()} available
           </p>
           {decision ? (
-            <p role="status">
-              {decision === "approve"
-                ? "Replacement approved. Resume pending."
-                : "Replacement declined. The stage remains paused."}
-            </p>
+            <>
+              <p role="status">
+                {decision === "decline"
+                  ? "Replacement declined. The stage remains paused."
+                  : replacementTurnId
+                    ? "Replacement turn recorded."
+                    : "Replacement approved. Resume pending."}
+              </p>
+              {decision === "approve" && !replacementTurnId && (
+                <Button type="button" disabled={pending} onClick={() => void decide("approve")}>
+                  Retry approved replacement
+                </Button>
+              )}
+            </>
           ) : (
             <div className="flex flex-wrap gap-2">
               <Button
