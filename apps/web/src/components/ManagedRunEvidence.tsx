@@ -100,6 +100,28 @@ export function ManagedRunEvidence({
               <p>Provider instance {stage.providerInstanceId ?? "Unknown"}</p>
               <WorkerThread id={stage.threadId} />
               <p>Tool calls {formatCount(stage.toolCalls ?? null)}</p>
+              {run.stageAttempts
+                ?.filter((attempt) => attempt.stageId === stage.stageId)
+                .map((attempt) => (
+                  <details className="mt-2" key={attempt.attemptId}>
+                    <summary className="cursor-pointer">
+                      {attempt.actualModel ?? attempt.providerInstanceId} {"·"} {attempt.status}{" "}
+                      {"·"} Usage {attempt.usageStatus}
+                    </summary>
+                    <dl className="ml-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3">
+                      <dt>Input tokens</dt>
+                      <dd>{formatCount(attempt.tokens.inputTokens)}</dd>
+                      <dt>Cached input tokens</dt>
+                      <dd>{formatCount(attempt.tokens.cachedInputTokens)}</dd>
+                      <dt>Cache creation tokens</dt>
+                      <dd>{formatCount(attempt.tokens.cacheCreationTokens)}</dd>
+                      <dt>Output tokens</dt>
+                      <dd>{formatCount(attempt.tokens.outputTokens)}</dd>
+                      <dt>Reasoning tokens</dt>
+                      <dd>{formatCount(attempt.tokens.reasoningTokens)}</dd>
+                    </dl>
+                  </details>
+                ))}
               {stage.status === "paused_provider_quota" && (
                 <p className="mt-1 text-muted-foreground">
                   Open the worker thread to inspect the usage limit.

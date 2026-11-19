@@ -5,7 +5,7 @@ import { expect, it, vi } from "vite-plus/test";
 
 import { render } from "../../test/render";
 import { postApproval } from "~/lib/isolatedApprovalClient";
-import type { ManagedRun } from "~/lib/managedRunDelivery";
+import { parseManagedRun, type ManagedRun } from "~/lib/managedRunDelivery";
 import { ManagedRunEvidence } from "./ManagedRunEvidence";
 
 vi.mock(import("~/state/environments"), async (original) => ({
@@ -177,3 +177,50 @@ it.each(["approve", "decline"] as const)(
     }
   },
 );
+
+it("shows failed and replacement attempts with unknown and zero usage distinguished", async () => {
+  const tokens = {
+    inputTokens: null,
+    cachedInputTokens: null,
+    cacheCreationTokens: null,
+    outputTokens: null,
+    reasoningTokens: null,
+  };
+  const original = {
+    stageId: "known",
+    attemptId: "original",
+    providerInstanceId: "codex",
+    status: "failed",
+    actualModel: null,
+    usageStatus: "unavailable",
+    tokens,
+  };
+  const parsed = parseManagedRun(
+    {
+      ...run,
+      stageAttempts: [
+        original,
+        {
+          ...original,
+          attemptId: "replacement",
+          providerInstanceId: "claudeAgent",
+          actualModel: "claude-sonnet",
+          status: "completed",
+          usageStatus: "complete",
+          tokens: { ...tokens, cachedInputTokens: 0, outputTokens: 15 },
+        },
+      ],
+    },
+    run.runId,
+  );
+  expect(parsed).not.toBeNull();
+  await using screen = await render(<ManagedRunEvidence run={parsed!} />);
+  const failed = screen.getByText(/codex .* failed .* Usage unavailable/);
+  await failed.click();
+  expect(failed.element().closest("details")?.querySelector("dd")?.textContent).toBe("Unknown");
+  const replacement = screen.getByText(/claude-sonnet .* completed .* Usage complete/);
+  await replacement.click();
+  const counts = replacement.element().closest("details")?.querySelectorAll("dd");
+  expect(counts?.[1]?.textContent).toBe("0");
+  expect(counts?.[3]?.textContent).toBe("15");
+});
