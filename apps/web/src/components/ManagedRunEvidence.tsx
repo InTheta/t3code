@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import type { ManagedRun } from "~/lib/managedRunDelivery";
 import { useQuietThreadShell } from "~/state/entities";
 import { usePrimaryEnvironmentId } from "~/state/environments";
+import { QuotaHandoffDialog } from "./QuotaHandoffDialog";
 
 function WorkerThread({ id }: { id: string | null }) {
   const environmentId = usePrimaryEnvironmentId();
@@ -33,7 +34,13 @@ const stageStatusLabels = new Map([
   ["paused_provider_quota", "Paused on provider quota"],
 ]);
 
-export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
+export function ManagedRunEvidence({
+  run,
+  allowQuotaDecisions = false,
+}: {
+  run: ManagedRun;
+  allowQuotaDecisions?: boolean;
+}) {
   const { brief, budget, qa } = run;
   const fields = [
     ["Run ID", run.runId],
@@ -97,6 +104,13 @@ export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
                   Open the worker thread to inspect the usage limit.
                 </p>
               )}
+              {allowQuotaDecisions &&
+                run.status === "approved" &&
+                stage.status === "paused_provider_quota" && (
+                  <div className="mt-2">
+                    <QuotaHandoffDialog run={run} stage={stage} />
+                  </div>
+                )}
               {stage.status === "waiting_for_operator" && (
                 <p className="mt-1 text-muted-foreground">
                   Review the pending request in the worker thread to continue.
