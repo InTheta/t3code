@@ -41,6 +41,25 @@ const ManagedRun = Schema.Struct({
       }),
     ),
   ),
+  stageAttempts: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        stageId: Schema.String,
+        attemptId: Schema.String,
+        providerInstanceId: Schema.String,
+        status: Schema.String,
+        actualModel: Schema.NullOr(Schema.String),
+        usageStatus: Schema.String,
+        tokens: Schema.Struct({
+          inputTokens: Schema.NullOr(Tokens),
+          cachedInputTokens: Schema.NullOr(Tokens),
+          cacheCreationTokens: Schema.NullOr(Tokens),
+          outputTokens: Schema.NullOr(Tokens),
+          reasoningTokens: Schema.NullOr(Tokens),
+        }),
+      }),
+    ),
+  ),
   stages: Schema.Array(
     Schema.Struct({
       stageId: Schema.String,
