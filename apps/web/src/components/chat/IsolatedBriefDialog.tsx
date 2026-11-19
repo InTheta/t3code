@@ -1,8 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { type FormEvent, useState } from "react";
-import { readDesktopPrimaryBearerToken } from "~/environments/primary/desktopAuth";
-import { resolvePrimaryEnvironmentHttpUrl } from "~/environments/primary/target";
+import { postApproval } from "~/lib/isolatedApprovalClient";
 import { parseManagedRunId } from "~/lib/managedRunDelivery";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription, DialogPopup, DialogTitle, DialogTrigger } from "../ui/dialog";
@@ -39,43 +38,6 @@ const Draft = Schema.Struct({
 });
 const isDraft = Schema.is(Draft);
 const isApproval = Schema.is(Schema.Struct({ runId: Schema.String, revision: Schema.String }));
-
-async function postApproval(
-  action: "prepare" | "review" | "approve",
-  input: { ticket: string; revision?: string; scope?: string },
-): Promise<unknown> {
-  const token = await readDesktopPrimaryBearerToken();
-  if (!token) throw new Error("Sign in to the local desktop environment.");
-  const response = await fetch(
-    resolvePrimaryEnvironmentHttpUrl(`/api/isolated-approval/v1/${action}`),
-    {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify(input),
-      credentials: "omit",
-      redirect: "error",
-      cache: "no-store",
-    },
-  );
-  if (response.status === 400 || response.status === 409) {
-    const value: unknown = await response.json().catch(() => undefined);
-    const error = Schema.is(Schema.Struct({ error: Schema.String }));
-    throw new Error(
-      error(value) ? value.error : "Check your ticket and scope, then review the latest draft.",
-    );
-  }
-  if (response.status === 404)
-    throw new Error(
-      action === "prepare"
-        ? "Draft preparation is disabled in this environment."
-        : "Isolated approval is disabled in this environment.",
-    );
-  if (response.status === 401 || response.status === 403) {
-    throw new Error("This session cannot approve isolated runs.");
-  }
-  if (!response.ok) throw new Error("The isolated approval service is unavailable.");
-  return response.json();
-}
 
 function BriefForm() {
   const [draft, setDraft] = useState<typeof Draft.Type | null>(null);

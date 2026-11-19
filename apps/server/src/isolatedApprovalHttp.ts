@@ -20,9 +20,18 @@ const prepareBody = Schema.Struct({
   scope: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4000)),
 });
 const reviewBody = Schema.Struct({ ticket });
-const approveBody = Schema.Struct({
-  ticket,
-  revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+const revision = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/));
+const approveBody = Schema.Struct({ ticket, revision });
+const uuid = "[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}";
+const handoffIdentity = {
+  runId: Schema.String.check(Schema.isPattern(new RegExp(`^${uuid}$`))),
+  stageId: Schema.String.check(Schema.isPattern(new RegExp(`^${uuid}:(lead|implementation|qa)$`))),
+};
+const handoffReviewBody = Schema.Struct(handoffIdentity);
+const handoffDecideBody = Schema.Struct({
+  ...handoffIdentity,
+  revision,
+  decision: Schema.Literals(["approve", "decline"]),
 });
 
 function isolatedConfig() {
@@ -33,7 +42,13 @@ function isolatedConfig() {
   };
 }
 
-const bodies = { prepare: prepareBody, review: reviewBody, approve: approveBody };
+const bodies = {
+  prepare: prepareBody,
+  review: reviewBody,
+  approve: approveBody,
+  "handoff/review": handoffReviewBody,
+  "handoff/decide": handoffDecideBody,
+};
 
 const route = (action: keyof typeof bodies) =>
   HttpRouter.add(
@@ -108,4 +123,10 @@ const route = (action: keyof typeof bodies) =>
     }),
   );
 
-export const layer = Layer.mergeAll(route("prepare"), route("review"), route("approve"));
+export const layer = Layer.mergeAll(
+  route("prepare"),
+  route("review"),
+  route("approve"),
+  route("handoff/review"),
+  route("handoff/decide"),
+);

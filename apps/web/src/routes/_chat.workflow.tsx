@@ -352,7 +352,10 @@ function WorkflowPage() {
           {search.run &&
             (managed?.value ? (
               <>
-                <ManagedRunEvidence run={managed.value} />
+                <ManagedRunEvidence
+                  run={managed.value}
+                  allowQuotaDecisions={Boolean(window.desktopBridge)}
+                />
                 <h3 className="mt-3 font-medium">LangGraph and Symphony</h3>
                 {managed.value.workflowEvents?.length ? (
                   <ol className="mt-2 space-y-2 text-sm">
