@@ -28,6 +28,11 @@ function formatCount(value: number | null): string {
   return value === null ? "Unknown" : value.toLocaleString();
 }
 
+const stageStatusLabels = new Map([
+  ["waiting_for_operator", "Waiting for operator"],
+  ["paused_provider_quota", "Paused on provider quota"],
+]);
+
 export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
   const { brief, budget, qa } = run;
   const fields = [
@@ -81,13 +86,17 @@ export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
           {run.stages.map((stage) => (
             <li className="rounded-md border p-2 break-words" key={stage.stageId}>
               <p className="font-medium">
-                {stage.role} ·{" "}
-                {stage.status === "waiting_for_operator" ? "Waiting for operator" : stage.status}
+                {stage.role} · {stageStatusLabels.get(stage.status) ?? stage.status}
               </p>
               <p>Stage ID {stage.stageId}</p>
               <p>Provider instance {stage.providerInstanceId ?? "Unknown"}</p>
               <WorkerThread id={stage.threadId} />
               <p>Tool calls {formatCount(stage.toolCalls ?? null)}</p>
+              {stage.status === "paused_provider_quota" && (
+                <p className="mt-1 text-muted-foreground">
+                  Open the worker thread to inspect the usage limit.
+                </p>
+              )}
               {stage.status === "waiting_for_operator" && (
                 <p className="mt-1 text-muted-foreground">
                   Review the pending request in the worker thread to continue.
