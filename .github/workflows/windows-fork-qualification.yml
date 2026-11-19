@@ -2,7 +2,7 @@ name: Windows fork qualification
 
 on:
   push:
-    branches: [qualification/windows-package]
+    branches: [qualification/windows-package, qualification/windows-daily-integration]
 
 permissions:
   contents: read
