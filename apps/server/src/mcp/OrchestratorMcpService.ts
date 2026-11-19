@@ -979,6 +979,13 @@ function threadDetail(
     creationSource: projection.thread.creationSource,
     status: threadStatus(active?.status, latest?.status ?? "idle", shell.pendingBackgroundTasks),
     latestRunId: latest?.id ?? null,
+    ...(latest?.status === "failed" &&
+    latest.id === shell.latestRunId &&
+    shell.status === "failed" &&
+    active == null &&
+    shell.lastErrorClass != null
+      ? { latestRunFailureClass: shell.lastErrorClass }
+      : {}),
     activeRunId: active?.id ?? null,
     providerInstanceId: projection.thread.modelSelection.instanceId,
     model: projection.thread.modelSelection.model,
