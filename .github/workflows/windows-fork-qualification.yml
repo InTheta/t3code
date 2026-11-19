@@ -37,13 +37,14 @@ jobs:
             throw "Unexpected qualification source commit"
           }
           rustup target add x86_64-pc-windows-msvc
+      # The shared Vite+ cache publishes its Windows executable to Git Bash.
       - name: Build the Windows x64 installer
         id: package
-        shell: pwsh
+        shell: bash
         run: |
-          $env:TEMP = $env:RUNNER_TEMP
-          $env:TMP = $env:RUNNER_TEMP
-          vp run dist:desktop:win:x64 --keep-stage --output-dir "$env:RUNNER_TEMP/t3-windows-qualification"
+          export TEMP="$RUNNER_TEMP"
+          export TMP="$RUNNER_TEMP"
+          vp run dist:desktop:win:x64 --keep-stage --output-dir "$RUNNER_TEMP/t3-windows-qualification"
       - name: Record rejected payload inventory
         if: failure() && steps.package.outcome == 'failure'
         shell: pwsh
