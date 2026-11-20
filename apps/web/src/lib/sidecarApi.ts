@@ -304,6 +304,193 @@ export async function saveRetentionPolicy(
   }
 }
 
+export type Severity = "action" | "warning" | "info";
+export interface InboxItem {
+  readonly id: string;
+  readonly kind: string;
+  readonly severity: Severity;
+  readonly title: string;
+  readonly detail: string;
+  readonly link: string | null;
+}
+export interface Inbox {
+  readonly generatedAt: string;
+  readonly items: readonly InboxItem[];
+  readonly truncated: boolean;
+  readonly channels: readonly string[];
+  readonly configError: string | null;
+}
+export interface ProposalItem {
+  readonly kind: string;
+  readonly task: string;
+  readonly sha: string | null;
+  readonly bytes: number;
+  readonly ageDays: number;
+  readonly reason: string;
+}
+export interface Proposal {
+  readonly id: string;
+  readonly status: "pending" | "approved" | "rejected" | "expired" | "applied";
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly totalBytes: number;
+  readonly itemCount: number;
+  readonly byKind: Readonly<Record<string, { count: number; bytes: number }>>;
+  readonly keptByReason: Readonly<Record<string, number>>;
+  readonly items: readonly ProposalItem[];
+  readonly itemsTruncated: boolean;
+  readonly decidedBy: string | null;
+  readonly applied: {
+    removed: number;
+    skipped: number;
+    failed: number;
+    freedBytes: number | null;
+  } | null;
+}
+
+const severities: readonly Severity[] = ["action", "warning", "info"];
+const proposalStates = ["pending", "approved", "rejected", "expired", "applied"] as const;
+
+export function parseInbox(value: unknown): Inbox | null {
+  if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.items)) return null;
+  const items: InboxItem[] = [];
+  for (const entry of value.items) {
+    if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.title !== "string")
+      continue;
+    const severity = severities.find((item) => item === entry.severity);
+    if (!severity) continue;
+    items.push({
+      id: entry.id,
+      kind: str(entry.kind) ?? "unknown",
+      severity,
+      title: entry.title,
+      detail: str(entry.detail) ?? "",
+      link: str(entry.link),
+    });
+  }
+  return {
+    generatedAt: str(value.generatedAt) ?? "",
+    items,
+    truncated: value.truncated === true,
+    channels: Array.isArray(value.channels)
+      ? value.channels.filter((c): c is string => typeof c === "string")
+      : [],
+    configError: str(value.configError),
+  };
+}
+
+export function parseProposal(value: unknown): Proposal | null {
+  if (!isRecord(value) || typeof value.id !== "string" || !/^[a-f0-9]{16}$/.test(value.id))
+    return null;
+  const status = proposalStates.find((item) => item === value.status);
+  if (!status) return null;
+  const byKind: Record<string, { count: number; bytes: number }> = {};
+  if (isRecord(value.byKind)) {
+    for (const [kind, entry] of Object.entries(value.byKind)) {
+      if (isRecord(entry)) byKind[kind] = { count: count(entry.count), bytes: count(entry.bytes) };
+    }
+  }
+  const keptByReason: Record<string, number> = {};
+  if (isRecord(value.keptByReason)) {
+    for (const [reason, amount] of Object.entries(value.keptByReason))
+      keptByReason[reason] = count(amount);
+  }
+  const items: ProposalItem[] = [];
+  for (const entry of Array.isArray(value.items) ? value.items : []) {
+    if (isRecord(entry) && typeof entry.kind === "string" && typeof entry.task === "string") {
+      items.push({
+        kind: entry.kind,
+        task: entry.task,
+        sha: str(entry.sha),
+        bytes: count(entry.bytes),
+        ageDays: count(entry.ageDays),
+        reason: str(entry.reason) ?? "",
+      });
+    }
+  }
+  const applied = isRecord(value.applied)
+    ? {
+        removed: count(value.applied.removed),
+        skipped: count(value.applied.skipped),
+        failed: count(value.applied.failed),
+        freedBytes: num(value.applied.freedBytes),
+      }
+    : null;
+  return {
+    id: value.id,
+    status,
+    createdAt: str(value.createdAt) ?? "",
+    expiresAt: str(value.expiresAt) ?? "",
+    totalBytes: count(value.totalBytes),
+    itemCount: count(value.itemCount),
+    byKind,
+    keptByReason,
+    items,
+    itemsTruncated: value.itemsTruncated === true,
+    decidedBy: str(value.decidedBy),
+    applied,
+  };
+}
+
+export function parseProposals(value: unknown): Proposal[] | null {
+  if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.proposals)) return null;
+  return value.proposals.map(parseProposal).filter((item): item is Proposal => item !== null);
+}
+
+export async function readInbox(signal: AbortSignal): Promise<Inbox | null> {
+  return parseInbox(await readJson("inbox", signal));
+}
+
+export async function readProposals(signal: AbortSignal): Promise<Proposal[] | null> {
+  return parseProposals(await readJson("retention/proposals", signal));
+}
+
+export type ActionResult = { ok: true } | { ok: false; message: string };
+
+async function putSidecar(
+  resource: string,
+  body: unknown,
+  signal: AbortSignal,
+): Promise<ActionResult> {
+  try {
+    const response = await sendDeliverySidecar(
+      `/delivery-sidecar/v1/sidecar/${resource}`,
+      JSON.stringify(body),
+      signal,
+    );
+    const reply: unknown = await response.json().catch(() => null);
+    return response.ok ? { ok: true } : { ok: false, message: failure(response.status, reply) };
+  } catch {
+    return { ok: false, message: "The sidecar could not be reached." };
+  }
+}
+
+export function proposeCleanup(signal: AbortSignal): Promise<ActionResult> {
+  return putSidecar("retention/proposals", { action: "propose" }, signal);
+}
+
+export function decideProposal(
+  id: string,
+  decision: "approve" | "reject",
+  signal: AbortSignal,
+): Promise<ActionResult> {
+  return putSidecar(`retention/proposals/${id}`, { decision }, signal);
+}
+
+/** Search parameters for an in-app link the sidecar sent, or null when it is not one we know. */
+export function inboxSearch(
+  link: string | null,
+): { ticket?: string; run?: string; view?: "fleet" | "sidecar" | "inbox" } | null {
+  if (!link?.startsWith("/delivery?")) return null;
+  const params = new URLSearchParams(link.slice("/delivery?".length));
+  const run = params.get("run");
+  const ticket = params.get("ticket");
+  const view = params.get("view");
+  if (run && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(run)) return { run };
+  if (ticket && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(ticket)) return { ticket };
+  if (view === "fleet" || view === "sidecar" || view === "inbox") return { view };
+  return null;
+}
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KiB", "MiB", "GiB", "TiB"];

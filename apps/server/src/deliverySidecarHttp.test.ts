@@ -115,7 +115,7 @@ it("serves sidecar status reads and writes retention only for operators", async 
       }),
     );
   try {
-    for (const name of ["status", "retention", "overview"]) {
+    for (const name of ["status", "retention", "overview", "inbox", "retention/proposals"]) {
       const response = await handler(
         new Request(`${base}${name}`, { headers: { authorization: "Bearer reader" } }),
       );
@@ -125,7 +125,7 @@ it("serves sidecar status reads and writes retention only for operators", async 
       (await handler(new Request(`${base}other`, { headers: { authorization: "Bearer reader" } })))
         .status,
     ).toBe(404);
-    expect(upstream).toHaveBeenCalledTimes(3);
+    expect(upstream).toHaveBeenCalledTimes(5);
 
     expect((await put("reader", '{"snapshot_days":3}')).status).toBe(403);
     expect(
@@ -134,7 +134,7 @@ it("serves sidecar status reads and writes retention only for operators", async 
     expect((await put("operator", '{"snapshot_days":3}', "text/plain")).status).toBe(400);
     expect((await put("operator", "[1]")).status).toBe(400);
     expect((await put("operator", "x".repeat(5000))).status).toBe(400);
-    expect(upstream).toHaveBeenCalledTimes(3);
+    expect(upstream).toHaveBeenCalledTimes(5);
 
     const ok = await put(
       "operator",
@@ -144,13 +144,35 @@ it("serves sidecar status reads and writes retention only for operators", async 
     );
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ policy: { snapshot_days: 3 } });
-    const [url, init] = upstream.mock.calls[3] ?? [];
+    const [url, init] = upstream.mock.calls[5] ?? [];
     expect(String(url)).toBe("http://127.0.0.1:45678/delivery-sidecar/v1/sidecar/retention");
     expect(init?.method).toBe("PUT");
     const sent = new Headers(init?.headers);
     expect(sent.get("authorization")).toBeNull();
     expect(sent.get("origin")).toBeNull();
     expect(sent.get("cookie")).toBeNull();
+
+    const decide = (token: string, id: string) =>
+      handler(
+        new Request(`${base}retention/proposals/${id}`, {
+          method: "PUT",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+            "content-length": "22",
+          },
+          body: '{"decision":"approve"}',
+        }),
+      );
+    expect((await decide("reader", "a".repeat(16))).status).toBe(403);
+    expect((await decide("operator", "zz")).status).toBe(404);
+    expect((await decide("operator", "a".repeat(16))).status).toBe(200);
+    const [decisionUrl, decisionInit] = upstream.mock.calls[6] ?? [];
+    expect(String(decisionUrl)).toBe(
+      `http://127.0.0.1:45678/delivery-sidecar/v1/sidecar/retention/proposals/${"a".repeat(16)}`,
+    );
+    expect(new Headers(decisionInit?.headers).get("x-operator-subject")).toBe("fixture");
+    expect(new Headers(decisionInit?.headers).get("authorization")).toBeNull();
 
     expect((await put("operator", '{"bad":1}')).status).toBe(400);
     vi.stubEnv("T3CODE_DELIVERY_SIDECAR_PORT", "");

@@ -1,9 +1,11 @@
 /* oxlint-disable t3code/no-untranslated-copy -- fork-only operator screen, English only */
 import { useState } from "react";
 
+import { CleanupProposals } from "~/components/CleanupProposals";
 import {
   formatAge,
   formatBytes,
+  type Proposal,
   policyPatch,
   saveRetentionPolicy,
   validateField,
@@ -102,9 +104,11 @@ async function saveAndReload(
 
 export function SidecarSettings({
   status,
+  proposals = null,
   onChanged,
 }: {
   status: SidecarStatus | null;
+  proposals?: readonly Proposal[] | null;
   onChanged: () => void;
 }) {
   const [edits, setEdits] = useState<Record<string, PolicyValue>>({});
@@ -202,6 +206,8 @@ export function SidecarSettings({
           and is never started from here.
         </p>
       </article>
+
+      <CleanupProposals proposals={proposals} onChanged={onChanged} />
 
       <form
         className="grid gap-4 rounded-lg border p-4 text-sm"

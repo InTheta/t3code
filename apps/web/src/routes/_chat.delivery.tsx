@@ -10,12 +10,13 @@ import {
 import type { ReactNode } from "react";
 
 import { FleetBoard } from "~/components/FleetBoard";
+import { InboxPanel } from "~/components/InboxPanel";
 import { ManagedRunEvidence } from "~/components/ManagedRunEvidence";
 import { SidecarSettings } from "~/components/SidecarSettings";
 import { deliveryCiRun, parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
 import { fetchDeliverySidecar } from "~/lib/deliverySidecarFetch";
 import { parseManagedRunId, readManagedRun } from "~/lib/managedRunDelivery";
-import { readFleetOverview, readSidecarStatus } from "~/lib/sidecarApi";
+import { readFleetOverview, readInbox, readProposals, readSidecarStatus } from "~/lib/sidecarApi";
 import {
   readPullRequestDelivery,
   type PullRequestDelivery,
@@ -40,6 +41,7 @@ interface Delivery {
 
 const views = [
   ["evidence", "Evidence"],
+  ["inbox", "Needs you"],
   ["fleet", "Fleet"],
   ["sidecar", "Sidecar settings"],
 ] as const;
@@ -158,7 +160,9 @@ function DeliveryPage() {
   const router = useRouter();
   const navigate = useNavigate({ from: Route.fullPath });
   const { ticket, pr, run, view = "evidence" } = Route.useSearch();
-  const { delivery, pullRequestDelivery, managedRun, fleet, sidecar } = Route.useLoaderData();
+  const { delivery, pullRequestDelivery, managedRun, fleet, sidecar, proposals, inbox } =
+    Route.useLoaderData();
+  const waiting = inbox?.items.filter((item) => item.severity === "action").length ?? 0;
   const loading = useRouterState({ select: (state) => state.isLoading });
   const ciStatus =
     delivery?.ci.status === "passed" && delivery.ci.head !== delivery.pullRequest.head
@@ -202,9 +206,18 @@ function DeliveryPage() {
             className={`rounded-md border px-3 py-1 ${view === id ? "bg-muted font-semibold" : ""}`}
           >
             {label}
+            {id === "inbox" && waiting > 0 ? ` · ${waiting}` : ""}
           </Link>
         ))}
       </nav>
+      {view === "inbox" &&
+        (loading ? (
+          <p className="mt-4 text-sm" role="status">
+            Reading what needs you…
+          </p>
+        ) : (
+          <InboxPanel inbox={inbox} onRefresh={() => void router.invalidate()} />
+        ))}
       {view === "fleet" &&
         (loading ? (
           <p className="mt-4 text-sm" role="status">
@@ -219,7 +232,11 @@ function DeliveryPage() {
             Reading the sidecar…
           </p>
         ) : (
-          <SidecarSettings status={sidecar} onChanged={() => void router.invalidate()} />
+          <SidecarSettings
+            status={sidecar}
+            proposals={proposals}
+            onChanged={() => void router.invalidate()}
+          />
         ))}
       {view === "evidence" && (
         <>
@@ -400,6 +417,8 @@ export const Route = createFileRoute("/_chat/delivery")({
     managedRun: deps.run ? await readManagedRun(deps.run, abortController.signal) : null,
     fleet: deps.view === "fleet" ? await readFleetOverview(abortController.signal) : null,
     sidecar: deps.view === "sidecar" ? await readSidecarStatus(abortController.signal) : null,
+    proposals: deps.view === "sidecar" ? await readProposals(abortController.signal) : null,
+    inbox: await readInbox(abortController.signal),
   }),
   component: DeliveryPage,
 });

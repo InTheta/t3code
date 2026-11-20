@@ -6,7 +6,10 @@ import { buildRunFlow, stageFlowStatus } from "./runFlow";
 import {
   formatAge,
   formatBytes,
+  inboxSearch,
   parseFleetOverview,
+  parseInbox,
+  parseProposals,
   parseSidecarStatus,
   policyPatch,
   validateField,
@@ -318,5 +321,80 @@ describe("sidecar API parsing", () => {
     expect(formatAge(600)).toBe("10 min ago");
     expect(formatAge(7200)).toBe("2 h ago");
     expect(formatAge(86400 * 3)).toBe("3 days ago");
+  });
+});
+
+describe("inbox and proposals parsing", () => {
+  it("keeps valid inbox items and drops malformed ones", () => {
+    const inbox = parseInbox({
+      version: 1,
+      generatedAt: "now",
+      channels: ["slack", 3],
+      configError: null,
+      items: [
+        {
+          id: "a",
+          kind: "quota-decision",
+          severity: "action",
+          title: "T",
+          detail: "D",
+          link: "/delivery?run=85c0326b-52e0-46dc-899d-d451c5afb228",
+        },
+        { id: "b", severity: "loud", title: "x" },
+        { severity: "info", title: "no id" },
+        "junk",
+      ],
+    });
+    expect(inbox?.items.map((item) => item.id)).toEqual(["a"]);
+    expect(inbox?.channels).toEqual(["slack"]);
+    expect(parseInbox({ version: 2, items: [] })).toBeNull();
+  });
+
+  it("only turns known in-app links into navigation", () => {
+    expect(inboxSearch("/delivery?run=85c0326b-52e0-46dc-899d-d451c5afb228")).toEqual({
+      run: "85c0326b-52e0-46dc-899d-d451c5afb228",
+    });
+    expect(inboxSearch("/delivery?ticket=LAB-74")).toEqual({ ticket: "LAB-74" });
+    expect(inboxSearch("/delivery?view=sidecar")).toEqual({ view: "sidecar" });
+    expect(inboxSearch("/delivery?view=nope")).toBeNull();
+    expect(inboxSearch("https://evil.example/delivery?view=fleet")).toBeNull();
+    expect(inboxSearch("/delivery?run=../x")).toBeNull();
+    expect(inboxSearch(null)).toBeNull();
+  });
+
+  it("reads proposals and rejects unknown ids and states", () => {
+    const parsed = parseProposals({
+      version: 1,
+      proposals: [
+        {
+          id: "0123456789abcdef",
+          status: "pending",
+          createdAt: "c",
+          expiresAt: "e",
+          totalBytes: 10,
+          itemCount: 1,
+          byKind: { snapshot: { count: 1, bytes: 10 } },
+          keptByReason: { "claim-held": 2 },
+          items: [
+            {
+              kind: "snapshot",
+              task: "GH-1",
+              sha: "a".repeat(40),
+              bytes: 10,
+              ageDays: 3,
+              reason: "old",
+            },
+            { nope: 1 },
+          ],
+          itemsTruncated: false,
+        },
+        { id: "short", status: "pending" },
+        { id: "fedcba9876543210", status: "exploded" },
+      ],
+    });
+    expect(parsed?.map((p) => p.id)).toEqual(["0123456789abcdef"]);
+    expect(parsed?.[0]?.items).toHaveLength(1);
+    expect(parsed?.[0]?.keptByReason).toEqual({ "claim-held": 2 });
+    expect(parseProposals({ version: 1 })).toBeNull();
   });
 });
