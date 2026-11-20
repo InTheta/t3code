@@ -441,6 +441,190 @@ export async function readInbox(signal: AbortSignal): Promise<Inbox | null> {
   return parseInbox(await readJson("inbox", signal));
 }
 
+export type Level = "fail" | "warn" | "info";
+const levels: readonly Level[] = ["fail", "warn", "info"];
+export interface QualityFinding {
+  readonly severity: Level;
+  readonly code: string;
+  readonly message: string;
+  readonly runId: string;
+  readonly ticket: string;
+}
+export interface ScoreRow {
+  readonly instance: string;
+  readonly model: string;
+  readonly role: string;
+  readonly stages: number;
+  readonly executed: number;
+  readonly quotaPaused: number;
+  readonly qaPassed: number;
+  readonly qaFailed: number;
+  readonly avgTokens: number | null;
+  readonly comparable: boolean;
+}
+export interface Quality {
+  readonly generatedAt: string;
+  readonly runs: number;
+  readonly decisions: number;
+  readonly traceable: number;
+  readonly coverage: number | null;
+  readonly counts: { readonly fail: number; readonly warn: number; readonly info: number };
+  readonly passed: boolean;
+  readonly findings: readonly QualityFinding[];
+  readonly findingsTruncated: boolean;
+  readonly rows: readonly ScoreRow[];
+  readonly suggestions: readonly {
+    readonly subject: string;
+    readonly note: string;
+    readonly requiresHuman: boolean;
+  }[];
+}
+export interface TracedDecision {
+  readonly id: string;
+  readonly title: string;
+  readonly byType: string;
+  readonly byName: string | null;
+  readonly at: string | null;
+  readonly launch: {
+    readonly providerInstanceId: string | null;
+    readonly threadId: string | null;
+    readonly turnId: string | null;
+  } | null;
+  readonly modelApproved: string | null;
+  readonly modelActual: string | null;
+  readonly tokens: number | null;
+  readonly gaps: readonly {
+    readonly severity: Level;
+    readonly code: string;
+    readonly message: string;
+  }[];
+}
+export interface Provenance {
+  readonly runId: string;
+  readonly ticket: string;
+  readonly status: string;
+  readonly traceId: string | null;
+  readonly traceable: number;
+  readonly total: number;
+  readonly decisions: readonly TracedDecision[];
+}
+
+const level = (value: unknown): Level | null => levels.find((item) => item === value) ?? null;
+
+export function parseQuality(value: unknown): Quality | null {
+  if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.findings)) return null;
+  const counts = isRecord(value.counts) ? value.counts : {};
+  const findings: QualityFinding[] = [];
+  for (const entry of value.findings) {
+    const severity = isRecord(entry) ? level(entry.severity) : null;
+    if (!isRecord(entry) || !severity || typeof entry.message !== "string") continue;
+    findings.push({
+      severity,
+      code: str(entry.code) ?? "unknown",
+      message: entry.message,
+      runId: str(entry.runId) ?? "",
+      ticket: str(entry.ticket) ?? "",
+    });
+  }
+  const scorecard = isRecord(value.scorecard) ? value.scorecard : {};
+  const rows: ScoreRow[] = [];
+  for (const row of Array.isArray(scorecard.rows) ? scorecard.rows : []) {
+    if (!isRecord(row) || typeof row.role !== "string") continue;
+    rows.push({
+      instance: str(row.instance) ?? "unknown",
+      model: str(row.model) ?? "unreported",
+      role: row.role,
+      stages: count(row.stages),
+      executed: count(row.executed),
+      quotaPaused: count(row.quotaPaused),
+      qaPassed: count(row.qaPassed),
+      qaFailed: count(row.qaFailed),
+      avgTokens: typeof row.avgTokens === "number" ? row.avgTokens : null,
+      comparable: row.comparable === true,
+    });
+  }
+  const suggestions = [];
+  for (const note of Array.isArray(scorecard.suggestions) ? scorecard.suggestions : []) {
+    if (!isRecord(note) || typeof note.note !== "string") continue;
+    suggestions.push({
+      subject: str(note.subject) ?? "",
+      note: note.note,
+      requiresHuman: note.requiresHuman === true,
+    });
+  }
+  return {
+    generatedAt: str(value.generatedAt) ?? "",
+    runs: count(value.runs),
+    decisions: count(value.decisions),
+    traceable: count(value.traceable),
+    coverage: typeof value.coverage === "number" ? value.coverage : null,
+    counts: { fail: count(counts.fail), warn: count(counts.warn), info: count(counts.info) },
+    passed: value.passed === true,
+    findings,
+    findingsTruncated: value.findingsTruncated === true,
+    rows,
+    suggestions,
+  };
+}
+
+export function parseProvenance(value: unknown): Provenance | null {
+  if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.decisions)) return null;
+  const decisions: TracedDecision[] = [];
+  for (const entry of value.decisions) {
+    if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.title !== "string")
+      continue;
+    const by = isRecord(entry.by) ? entry.by : {};
+    const launch = isRecord(entry.launch) ? entry.launch : null;
+    const model = isRecord(entry.model) ? entry.model : {};
+    const gaps = [];
+    for (const gap of Array.isArray(entry.gaps) ? entry.gaps : []) {
+      const severity = isRecord(gap) ? level(gap.severity) : null;
+      if (isRecord(gap) && severity && typeof gap.message === "string") {
+        gaps.push({ severity, code: str(gap.code) ?? "unknown", message: gap.message });
+      }
+    }
+    decisions.push({
+      id: entry.id,
+      title: entry.title,
+      byType: str(by.type) ?? "unknown",
+      byName: str(by.name),
+      at: str(entry.at),
+      launch: launch
+        ? {
+            providerInstanceId: str(launch.providerInstanceId),
+            threadId: str(launch.threadId),
+            turnId: str(launch.turnId),
+          }
+        : null,
+      modelApproved: str(model.approved),
+      modelActual: str(model.actual),
+      tokens: typeof entry.tokens === "number" ? entry.tokens : null,
+      gaps,
+    });
+  }
+  if (typeof value.runId !== "string") return null;
+  return {
+    runId: value.runId,
+    ticket: str(value.ticket) ?? "",
+    status: str(value.status) ?? "",
+    traceId: str(value.traceId),
+    traceable: count(value.traceable),
+    total: count(value.total),
+    decisions,
+  };
+}
+
+export async function readQuality(signal: AbortSignal): Promise<Quality | null> {
+  return parseQuality(await readJson("quality", signal));
+}
+
+export async function readProvenance(
+  runId: string,
+  signal: AbortSignal,
+): Promise<Provenance | null> {
+  return parseProvenance(await readJson(`provenance/${encodeURIComponent(runId)}`, signal));
+}
+
 export async function readProposals(signal: AbortSignal): Promise<Proposal[] | null> {
   return parseProposals(await readJson("retention/proposals", signal));
 }
@@ -480,7 +664,7 @@ export function decideProposal(
 /** Search parameters for an in-app link the sidecar sent, or null when it is not one we know. */
 export function inboxSearch(
   link: string | null,
-): { ticket?: string; run?: string; view?: "fleet" | "sidecar" | "inbox" } | null {
+): { ticket?: string; run?: string; view?: "fleet" | "sidecar" | "inbox" | "quality" } | null {
   if (!link?.startsWith("/delivery?")) return null;
   const params = new URLSearchParams(link.slice("/delivery?".length));
   const run = params.get("run");
@@ -488,7 +672,8 @@ export function inboxSearch(
   const view = params.get("view");
   if (run && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(run)) return { run };
   if (ticket && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(ticket)) return { ticket };
-  if (view === "fleet" || view === "sidecar" || view === "inbox") return { view };
+  if (view === "fleet" || view === "sidecar" || view === "inbox" || view === "quality")
+    return { view };
   return null;
 }
 export function formatBytes(bytes: number): string {

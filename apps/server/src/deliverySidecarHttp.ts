@@ -16,7 +16,8 @@ const prefix = "/delivery-sidecar/v1/";
 const ticket = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const pullRequest = /^pull-requests\/[a-z0-9-]+\/(?!\.{1,2}\/)[a-z0-9_.-]+\/[1-9][0-9]*$/i;
 const managedRun = /^managed-runs\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const sidecarRead = /^sidecar\/(?:status|retention|overview|inbox|retention\/proposals)$/;
+const sidecarRead =
+  /^sidecar\/(?:status|retention|overview|inbox|quality|retention\/proposals|provenance\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/;
 const sidecarWrite = /^sidecar\/retention(?:\/proposals(?:\/[0-9a-f]{16})?)?$/;
 const maxPolicyBody = 4096;
 const headers = { "cache-control": "no-store" };

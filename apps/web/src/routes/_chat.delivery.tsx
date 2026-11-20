@@ -12,11 +12,19 @@ import type { ReactNode } from "react";
 import { FleetBoard } from "~/components/FleetBoard";
 import { InboxPanel } from "~/components/InboxPanel";
 import { ManagedRunEvidence } from "~/components/ManagedRunEvidence";
+import { QualityPanel } from "~/components/QualityPanel";
 import { SidecarSettings } from "~/components/SidecarSettings";
 import { deliveryCiRun, parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
 import { fetchDeliverySidecar } from "~/lib/deliverySidecarFetch";
 import { parseManagedRunId, readManagedRun } from "~/lib/managedRunDelivery";
-import { readFleetOverview, readInbox, readProposals, readSidecarStatus } from "~/lib/sidecarApi";
+import {
+  readFleetOverview,
+  readInbox,
+  readProposals,
+  readProvenance,
+  readQuality,
+  readSidecarStatus,
+} from "~/lib/sidecarApi";
 import {
   readPullRequestDelivery,
   type PullRequestDelivery,
@@ -43,6 +51,7 @@ const views = [
   ["evidence", "Evidence"],
   ["inbox", "Needs you"],
   ["fleet", "Fleet"],
+  ["quality", "Quality"],
   ["sidecar", "Sidecar settings"],
 ] as const;
 type DeliveryView = (typeof views)[number][0];
@@ -160,8 +169,17 @@ function DeliveryPage() {
   const router = useRouter();
   const navigate = useNavigate({ from: Route.fullPath });
   const { ticket, pr, run, view = "evidence" } = Route.useSearch();
-  const { delivery, pullRequestDelivery, managedRun, fleet, sidecar, proposals, inbox } =
-    Route.useLoaderData();
+  const {
+    delivery,
+    pullRequestDelivery,
+    managedRun,
+    fleet,
+    sidecar,
+    proposals,
+    inbox,
+    quality,
+    provenance,
+  } = Route.useLoaderData();
   const waiting = inbox?.items.filter((item) => item.severity === "action").length ?? 0;
   const loading = useRouterState({ select: (state) => state.isLoading });
   const ciStatus =
@@ -225,6 +243,18 @@ function DeliveryPage() {
           </p>
         ) : (
           <FleetBoard overview={fleet} onRefresh={() => void router.invalidate()} />
+        ))}
+      {view === "quality" &&
+        (loading ? (
+          <p className="mt-4 text-sm" role="status">
+            Checking the record…
+          </p>
+        ) : (
+          <QualityPanel
+            quality={quality}
+            trace={provenance}
+            onRefresh={() => void router.invalidate()}
+          />
         ))}
       {view === "sidecar" &&
         (loading ? (
@@ -388,6 +418,7 @@ export const Route = createFileRoute("/_chat/delivery")({
     ticket?: string | undefined;
     pr?: string | undefined;
     run?: string | undefined;
+    trace?: string | undefined;
     view?: DeliveryView | undefined;
   } => ({
     view: views.find(([id]) => id === search.view)?.[0],
@@ -400,11 +431,13 @@ export const Route = createFileRoute("/_chat/delivery")({
         ? search.pr
         : undefined,
     run: parseManagedRunId(search.run),
+    trace: parseManagedRunId(search.trace),
   }),
   loaderDeps: ({ search }) => ({
     ticket: search.ticket,
     pr: search.pr,
     run: search.run,
+    trace: search.trace,
     view: search.view,
   }),
   loader: async ({ abortController, deps }) => ({
@@ -419,6 +452,11 @@ export const Route = createFileRoute("/_chat/delivery")({
     sidecar: deps.view === "sidecar" ? await readSidecarStatus(abortController.signal) : null,
     proposals: deps.view === "sidecar" ? await readProposals(abortController.signal) : null,
     inbox: await readInbox(abortController.signal),
+    quality: deps.view === "quality" ? await readQuality(abortController.signal) : null,
+    provenance:
+      deps.view === "quality" && deps.trace
+        ? await readProvenance(deps.trace, abortController.signal)
+        : null,
   }),
   component: DeliveryPage,
 });
