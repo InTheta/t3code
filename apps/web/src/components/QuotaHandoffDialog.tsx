@@ -43,6 +43,56 @@ const isReceipt = Schema.is(Receipt);
 
 type HandoffProps = { run: ManagedRun; stage: ManagedRun["stages"][number] };
 
+type Identity = { runId: string; stageId: string };
+
+// React Compiler cannot compile a `throw` inside try/catch, so the checks live here and the
+// components only call these functions inside their try blocks.
+async function requestProposal(
+  run: ManagedRun,
+  stage: HandoffProps["stage"],
+  identity: Identity,
+): Promise<typeof Proposal.Type> {
+  const value = await postApproval("handoff/review", identity);
+  if (
+    !isProposal(value) ||
+    value.runId !== run.runId ||
+    value.stageId !== stage.stageId ||
+    value.approvedRevision !== run.revision ||
+    value.repository !== run.brief.repository ||
+    value.baseSha !== run.brief.baseSha ||
+    value.scope !== run.brief.scope ||
+    value.original.threadId !== stage.threadId ||
+    value.original.modelSelection.instanceId !== stage.providerInstanceId
+  ) {
+    throw new Error("The proposal does not match the paused stage.");
+  }
+  return value;
+}
+
+async function requestReceipt(
+  run: ManagedRun,
+  stage: HandoffProps["stage"],
+  identity: Identity,
+  proposal: typeof Proposal.Type,
+  choice: typeof Decision.Type,
+): Promise<typeof Receipt.Type> {
+  const value = await postApproval("handoff/decide", {
+    ...identity,
+    revision: proposal.revision,
+    decision: choice,
+  });
+  if (
+    !isReceipt(value) ||
+    value.runId !== run.runId ||
+    value.stageId !== stage.stageId ||
+    value.revision !== proposal.revision ||
+    value.decision !== choice
+  ) {
+    throw new Error("Decision receipt unavailable. Retry the same decision to recover it.");
+  }
+  return value;
+}
+
 function HandoffReview({ run, stage }: HandoffProps) {
   const [proposal, setProposal] = useState<typeof Proposal.Type>();
   const [decision, setDecision] = useState<typeof Decision.Type>();
@@ -55,28 +105,14 @@ function HandoffReview({ run, stage }: HandoffProps) {
     setPending(true);
     setError(undefined);
     try {
-      const value = await postApproval("handoff/review", identity);
-      if (
-        !isProposal(value) ||
-        value.runId !== run.runId ||
-        value.stageId !== stage.stageId ||
-        value.approvedRevision !== run.revision ||
-        value.repository !== run.brief.repository ||
-        value.baseSha !== run.brief.baseSha ||
-        value.scope !== run.brief.scope ||
-        value.original.threadId !== stage.threadId ||
-        value.original.modelSelection.instanceId !== stage.providerInstanceId
-      ) {
-        throw new Error("The proposal does not match the paused stage.");
-      }
+      const value = await requestProposal(run, stage, identity);
       setProposal(value);
       setDecision(value.decision);
       setReplacementTurnId(value.replacementTurnId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Replacement review failed.");
-    } finally {
-      setPending(false);
     }
+    setPending(false);
   }
 
   async function decide(choice: typeof Decision.Type) {
@@ -84,27 +120,13 @@ function HandoffReview({ run, stage }: HandoffProps) {
     setPending(true);
     setError(undefined);
     try {
-      const value = await postApproval("handoff/decide", {
-        ...identity,
-        revision: proposal.revision,
-        decision: choice,
-      });
-      if (
-        !isReceipt(value) ||
-        value.runId !== run.runId ||
-        value.stageId !== stage.stageId ||
-        value.revision !== proposal.revision ||
-        value.decision !== choice
-      ) {
-        throw new Error("Decision receipt unavailable. Retry the same decision to recover it.");
-      }
+      const value = await requestReceipt(run, stage, identity, proposal, choice);
       setDecision(value.decision);
       setReplacementTurnId(value.replacementTurnId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Replacement decision failed.");
-    } finally {
-      setPending(false);
     }
+    setPending(false);
   }
 
   return (
