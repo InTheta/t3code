@@ -21,5 +21,6 @@ export function seedDraftModelSelection(draftId: DraftId, projectRef: ScopedProj
     ? resolveProjectSettings(settings, projectRef.projectId, project ?? undefined).settings
         .defaultModelSelection
     : (project?.defaultModelSelection ?? null);
-  if (defaultSelection) store.setModelSelection(draftId, defaultSelection, { replaceOptions: true });
+  if (defaultSelection)
+    store.setModelSelection(draftId, defaultSelection, { replaceOptions: true });
 }

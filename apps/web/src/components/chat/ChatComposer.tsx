@@ -3754,6 +3754,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
               {composerAttachmentFileList}
 
+              {/* oxlint-disable t3code/no-untranslated-copy -- fork: Delivery entry point, English only */}
               {pendingUserInputs.length === 0 &&
                 !isComposerApprovalState &&
                 prompt.trim().startsWith("https://github.com/") &&
@@ -3768,6 +3769,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     Open Delivery
                   </button>
                 )}
+              {/* oxlint-enable t3code/no-untranslated-copy */}
 
               <div className="relative">
                 {previewFile ? (
@@ -3890,6 +3892,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </div>
             ) : null}
 
+            {/* oxlint-disable t3code/no-untranslated-copy -- fork: plan-only quota switch copy, English only */}
             {planDecision?.owner === composerDraftTargetKey && planDecision.proposal.warning ? (
               <div role="status" className="mx-3 mb-2 space-y-2 rounded-md border p-2 text-sm">
                 <p>
@@ -3929,6 +3932,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
               </div>
             ) : null}
+            {/* oxlint-enable t3code/no-untranslated-copy */}
             {isComposerCollapsedMobile && speechInput.state.phase === "idle" ? null : (
               <div
                 data-chat-composer-footer="true"
@@ -3943,6 +3947,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 {composerAttachButton && !dictationTakesFooter ? (
                   <div className="me-2">{composerAttachButton}</div>
                 ) : null}
+                {/* oxlint-disable t3code/no-untranslated-copy -- fork: Plan only control, English only */}
                 {canPlanOnly ? (
                   <Button
                     type="button"
@@ -3954,6 +3959,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     Plan only
                   </Button>
                 ) : null}
+                {/* oxlint-enable t3code/no-untranslated-copy */}
                 <div
                   data-chat-composer-actions="right"
                   data-chat-composer-transition-actions="true"

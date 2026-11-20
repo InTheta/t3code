@@ -438,7 +438,9 @@ export function useComposerSend(input: ComposerSendInput) {
     if (planOnly && promptAtSend.trimStart().startsWith("/")) {
       toastManager.add({
         type: "warning",
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- fork: plan-only toast, English only
         title: "Enter a planning brief",
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- fork: plan-only toast, English only
         description: "Use the regular Send button for slash commands.",
       });
       return;

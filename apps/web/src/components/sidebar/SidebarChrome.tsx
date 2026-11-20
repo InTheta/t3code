@@ -310,6 +310,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           ) : null}
           <SidebarUtilityItem
             icon={<PullRequestGlyph.pullRequest />}
+            // oxlint-disable-next-line t3code/no-untranslated-copy -- fork: operator link, English only
             label="Delivery"
             onClick={() => {
               closeMobileSidebar();
@@ -318,6 +319,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           />
           <SidebarUtilityItem
             icon={<WorkflowIcon />}
+            // oxlint-disable-next-line t3code/no-untranslated-copy -- fork: operator link, English only
             label="Workflow"
             onClick={() => {
               closeMobileSidebar();

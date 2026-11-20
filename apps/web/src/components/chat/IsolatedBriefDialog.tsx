@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- fork-only operator screen, English only */
 import { Link } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { type FormEvent, useState } from "react";

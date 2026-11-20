@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- fork-only operator screen, English only */
 import { ThreadId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 

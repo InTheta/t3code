@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- fork-only operator screen, English only */
 import {
   Link,
   createFileRoute,

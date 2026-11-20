@@ -1765,6 +1765,7 @@ function OpenCommandPaletteDialog(props: {
     kind: "action",
     value: "action:workflow",
     searchTerms: ["workflow", "agents", "delegation", "delivery"],
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- fork: operator command, English only
     title: "Open Workflow",
     icon: <ChartNoAxesColumnIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
