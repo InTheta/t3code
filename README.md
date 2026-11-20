@@ -37,6 +37,23 @@ It works with Claude Code, Codex, Cursor, OpenCode, Grok Build, Antigravity, Kir
 - **Fast.** Performance is a feature here. We measure it, and we treat a dropped frame as a bug.
 - **Open.** MIT licensed. If you don't like something, fork it.
 
+## Install this fork
+
+This repository is the InTheta fork of T3 Code. The commands under **Install** further down fetch upstream's builds, not this fork's. To get the fork (Delivery page, managed runs, isolated approval and the other patches), run one command. It downloads the latest fork release, checks its SHA-256, and installs the desktop app.
+
+macOS and Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/InTheta/t3code/main/scripts/omni/install.sh | sh
+```
+
+Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/InTheta/t3code/main/scripts/omni/install.ps1 | iex
+```
+
+Fork builds are not signed or notarized. [Install this fork](./docs/user/install-omni-fork.md) covers what each OS shows on first launch, how to pin a version, and how a release is made.
 ## Install
 
 ### Desktop app

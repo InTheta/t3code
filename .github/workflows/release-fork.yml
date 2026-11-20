@@ -1,0 +1,383 @@
+name: Fork release
+
+# One-click desktop installers for the InTheta fork: macOS (arm64, x64), Linux
+# (x64) and Windows (x64). Builds are unsigned. Each installer is built on a
+# GitHub-hosted runner, then really installed on a clean runner through the
+# public install scripts (scripts/omni/install.sh and install.ps1) before
+# anything is published, so a release that does not install is never published.
+#
+#   git tag v0.1.9-omni.1 && git push origin v0.1.9-omni.1
+#       build, verify install, publish a GitHub Release
+#   Actions > Fork release > Run workflow
+#       build and verify install only; nothing is published
+#
+# Upstream's release.yml is gated to pingdotgg/t3code and needs Blacksmith runners,
+# Clerk and signing secrets, so it cannot run here. This workflow reuses the same
+# build script (scripts/build-desktop-artifact.ts) and leaves release.yml untouched.
+
+on:
+  push:
+    tags:
+      - "v*.*.*-omni.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, for example 0.1.9-omni.1. Dry run: nothing is published."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve version
+    if: github.repository == 'InTheta/t3code'
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - name: Resolve version and publish mode
+        id: v
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == push ]]; then
+            version="${REF_NAME#v}"
+            publish=true
+          else
+            version="$INPUT_VERSION"
+            publish=false
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-omni\.[0-9]+$ ]]; then
+            echo "::error::Version '$version' must look like 0.1.9-omni.1"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
+      # Only commits that are already on main may be published, so a tag on a stray
+      # branch cannot ship an installer.
+      - name: Require a commit reachable from main
+        if: steps.v.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${GITHUB_SHA}" --jq .status)"
+          case "$status" in
+            identical | behind) echo "Tagged commit is on main ($status)." ;;
+            *) echo "::error::Tagged commit ${GITHUB_SHA} is not on main (compare status: $status)."; exit 1 ;;
+          esac
+
+  installer-checks:
+    name: Check install scripts
+    needs: resolve
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the pinned scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set scripts/omni
+          git checkout --detach FETCH_HEAD
+      - name: Lint and test install.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          shellcheck -s sh -S warning scripts/omni/install.sh scripts/omni/install.test.sh
+          sh scripts/omni/install.test.sh
+      - name: Parse install.ps1
+        shell: pwsh
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("scripts/omni/install.ps1", [ref]$null, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: resolve
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.resolve.outputs.version }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: mac-arm64, label: "macOS arm64", runner: macos-15, script: "dist:desktop:dmg:arm64", rust_target: aarch64-apple-darwin }
+          - { id: mac-x64, label: "macOS x64", runner: macos-15-intel, script: "dist:desktop:dmg:x64", rust_target: x86_64-apple-darwin }
+          - { id: linux-x64, label: "Linux x64", runner: ubuntu-24.04, script: "dist:desktop:linux", rust_target: x86_64-unknown-linux-gnu }
+          - { id: win-x64, label: "Windows x64", runner: windows-2025, script: "dist:desktop:win:x64", rust_target: x86_64-pc-windows-msvc }
+    steps:
+      # Same pinned, depth-1 checkout the Windows qualification build proved. The vendored
+      # .repos tree has orphaned gitlinks that break actions/checkout's cleanup.
+      - name: Check out the pinned source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git config core.longpaths true
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsecret-1-dev pkg-config imagemagick libgtk-3-0t64 libnss3 libasound2t64 libgbm1
+
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
+
+      - name: Add the Rust target
+        shell: bash
+        run: rustup target add "${{ matrix.rust_target }}"
+
+      # The shared Vite+ cache publishes its Windows executable to Git Bash, so build in bash everywhere.
+      - name: Build the installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            export TEMP="$RUNNER_TEMP" TMP="$RUNNER_TEMP"
+          fi
+          vp run "${{ matrix.script }}" --build-version "$VERSION" --output-dir "$RUNNER_TEMP/dist"
+
+      - name: Collect installers and checksums
+        shell: bash
+        env:
+          ID: ${{ matrix.id }}
+        run: |
+          set -euo pipefail
+          tmp="$RUNNER_TEMP"
+          if command -v cygpath >/dev/null 2>&1; then tmp="$(cygpath -u "$tmp")"; fi
+          out="$tmp/dist"
+          pub="$tmp/publish"
+          mkdir -p "$pub"
+          shopt -s nullglob
+          # Rename to the deterministic names the install scripts look for.
+          pick() {
+            local matches=($1)
+            if [[ ${#matches[@]} -ne 1 ]]; then
+              echo "::error::Expected exactly one '$1', found ${#matches[@]}"
+              ls -la "$out"
+              exit 1
+            fi
+            cp "${matches[0]}" "$pub/$2"
+          }
+          case "$ID" in
+            mac-arm64 | mac-x64) pick "$out/*.dmg" "T3-Code-$VERSION-$ID.dmg" ;;
+            linux-x64)
+              pick "$out/*.AppImage" "T3-Code-$VERSION-linux-x64.AppImage"
+              pick "$out/*.deb" "T3-Code-$VERSION-linux-x64.deb"
+              ;;
+            win-x64) pick "$out/*.exe" "T3-Code-$VERSION-win-x64.exe" ;;
+            *) echo "::error::Unknown build id $ID"; exit 1 ;;
+          esac
+          cd "$pub"
+          for f in T3-Code-*; do
+            if command -v sha256sum >/dev/null 2>&1; then sha256sum "$f"; else shasum -a 256 "$f"; fi
+          done > "SHA256SUMS.$ID"
+          ls -la
+          cat "SHA256SUMS.$ID"
+          # A truncated or empty build must fail here, not at install time.
+          for f in T3-Code-*; do
+            size="$(wc -c < "$f")"
+            if [[ "$size" -lt 50000000 ]]; then echo "::error::$f is only $size bytes"; exit 1; fi
+          done
+
+      - name: Upload installers
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installer-${{ matrix.id }}
+          path: ${{ runner.temp }}/publish/*
+          if-no-files-found: error
+          # Installers are already compressed.
+          compression-level: 0
+          retention-days: 14
+
+  # Installs each built file on a clean runner through the same script users run,
+  # using a local mirror laid out like releases/download.
+  verify-install:
+    name: Install ${{ matrix.label }}
+    needs: [resolve, installer-checks, build]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.resolve.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: mac-arm64, label: "macOS arm64", runner: macos-15 }
+          - { id: mac-x64, label: "macOS x64", runner: macos-15-intel }
+          - { id: linux-x64, label: "Linux x64", runner: ubuntu-24.04 }
+          - { id: win-x64, label: "Windows x64", runner: windows-2025 }
+    steps:
+      - name: Check out the pinned scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set scripts/omni
+          git checkout --detach FETCH_HEAD
+
+      - name: Download the installer
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: installer-${{ matrix.id }}
+          path: mirror/v${{ needs.resolve.outputs.version }}
+
+      - name: Build the mirror checksum file
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "mirror/v$VERSION"
+          cat SHA256SUMS.* > SHA256SUMS
+          ls -la
+
+      - name: Install with install.sh
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          OMNI_T3_BASE_URL: ${{ github.workspace }}/mirror
+          OMNI_T3_VERSION: ${{ needs.resolve.outputs.version }}
+          OMNI_T3_PREFIX: ${{ runner.temp }}/t3code-omni
+          OMNI_T3_BIN_DIR: ${{ runner.temp }}/bin
+        run: |
+          set -euo pipefail
+          sh scripts/omni/install.sh
+
+      - name: Check the installed macOS app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$(find /Applications "$HOME/Applications" -maxdepth 1 -name 'T3 Code*.app' 2>/dev/null | head -n 1)"
+          test -n "$app" || { echo "::error::No T3 Code app was installed"; exit 1; }
+          echo "Installed: $app"
+          test -x "$app/Contents/MacOS/$(defaults read "$app/Contents/Info" CFBundleExecutable)"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | sed -n '1,12p'
+          lipo -archs "$app/Contents/MacOS/$(defaults read "$app/Contents/Info" CFBundleExecutable)"
+
+      - name: Check the installed Linux app
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$RUNNER_TEMP/t3code-omni/T3-Code.AppImage"
+          test -x "$appimage"
+          test -L "$RUNNER_TEMP/bin/t3code-desktop"
+          mkdir "$RUNNER_TEMP/extract" && cd "$RUNNER_TEMP/extract"
+          "$appimage" --appimage-extract >/dev/null
+          test -e squashfs-root/AppRun
+          ls squashfs-root | head -n 20
+          echo "AppImage unpacks and has an AppRun. It was not launched: the runner has no display."
+
+      - name: Install and check on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          OMNI_T3_BASE_URL: ${{ github.workspace }}\mirror
+          OMNI_T3_VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          & ./scripts/omni/install.ps1
+          $programs = Join-Path $env:LOCALAPPDATA "Programs"
+          $exe = Get-ChildItem -LiteralPath $programs -Recurse -Filter "T3 Code*.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notmatch "Uninstall" } | Select-Object -First 1
+          if (-not $exe) {
+            Get-ChildItem -LiteralPath $programs -ErrorAction SilentlyContinue | Out-String | Write-Host
+            throw "No T3 Code executable was installed under $programs"
+          }
+          Write-Host "Installed: $($exe.FullName) ($([math]::Round($exe.Length / 1MB, 1)) MB)"
+          Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -Filter "T3 Code*" -ErrorAction SilentlyContinue | Out-String | Write-Host
+
+  publish:
+    name: Publish release
+    needs: [resolve, installer-checks, build, verify-install]
+    if: needs.resolve.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.resolve.outputs.version }}
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download every installer
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: installer-*
+          merge-multiple: true
+          path: dist
+
+      - name: Merge and re-check checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          cat SHA256SUMS.* | sort -k2 > SHA256SUMS
+          rm SHA256SUMS.*
+          sha256sum -c SHA256SUMS
+          ls -la
+
+      - name: Create or update the release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > notes.md <<EOF
+          Unsigned desktop builds of the InTheta fork of T3 Code, built from ${GITHUB_SHA}.
+
+          Install in one command:
+
+          macOS and Linux:
+
+          \`\`\`sh
+          curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/scripts/omni/install.sh | sh
+          \`\`\`
+
+          Windows (PowerShell):
+
+          \`\`\`powershell
+          irm https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/scripts/omni/install.ps1 | iex
+          \`\`\`
+
+          Each installer checks the SHA-256 in \`SHA256SUMS\` before it installs. These builds are not signed or notarized: Windows may show a SmartScreen notice and macOS may ask you to right-click and choose Open on first launch.
+
+          Every installer in this release was installed on a clean macOS arm64, macOS x64, Linux x64 and Windows x64 runner by these scripts before publishing. The Linux AppImage was unpacked but not launched, because the runner has no display.
+          EOF
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --latest \
+              --title "T3 Code fork $VERSION" \
+              --notes-file notes.md
+          fi
