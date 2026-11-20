@@ -65,7 +65,10 @@ it("says when nothing is waiting, when settings are bad and when the sidecar is 
       />,
     );
     await expect.element(screen.getByText("Nothing is waiting on you.")).toBeVisible();
-    await expect.element(screen.getByRole("alert")).toHaveTextContent(/channels must be a list/);
+    await expect.element(screen.getByRole("alert")).toBeVisible();
+    await expect
+      .element(screen.getByText(/defaults are in use: channels must be a list/))
+      .toBeVisible();
   }
   await using screen = await render(<InboxPanel inbox={null} onRefresh={() => {}} />);
   await expect.element(screen.getByText(/sidecar is not connected/)).toBeVisible();
