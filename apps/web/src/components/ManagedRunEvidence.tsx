@@ -1,8 +1,11 @@
 /* oxlint-disable t3code/no-untranslated-copy -- fork-only operator screen, English only */
 import { ThreadId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 
+import { buildRunFlow } from "~/lib/runFlow";
 import type { ManagedRun } from "~/lib/managedRunDelivery";
+import { FlowDiagram } from "./FlowDiagram";
 import { useQuietThreadShell } from "~/state/entities";
 import { usePrimaryEnvironmentId } from "~/state/environments";
 import { QuotaHandoffDialog } from "./QuotaHandoffDialog";
@@ -44,6 +47,9 @@ export function ManagedRunEvidence({
   allowQuotaDecisions?: boolean;
 }) {
   const { brief, budget, qa } = run;
+  const [selectedNode, setSelectedNode] = useState<string | undefined>();
+  const flow = buildRunFlow(run);
+  const selectedStage = flow.nodes.find((node) => node.id === selectedNode)?.stageId;
   const fields = [
     ["Run ID", run.runId],
     ...(run.traceId ? [["Langfuse correlation ID", run.traceId]] : []),
@@ -59,11 +65,25 @@ export function ManagedRunEvidence({
     ["Remaining tokens", formatCount(budget.remaining)],
   ];
   return (
-    <article className="mt-4 max-w-2xl rounded-lg border p-4">
+    <article className="mt-4 max-w-4xl rounded-lg border p-4">
       <h2 className="font-medium">Managed run · {run.ticket}</h2>
       <p className="mt-2 text-sm text-muted-foreground">
         Read only. Approval and dispatch controls are unavailable here.
       </p>
+      <h3 className="mt-4 text-sm font-medium">Flow</h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Solid arrows were followed; dashed arrows are routes the run could still take. Select a
+        stage to open its details below.
+      </p>
+      <FlowDiagram
+        flow={flow}
+        label={`Flow of managed run ${run.ticket}`}
+        selectedId={selectedNode}
+        onSelect={(node) => {
+          setSelectedNode(node.id);
+          document.getElementById(`stage-${node.stageId}`)?.scrollIntoView?.({ block: "nearest" });
+        }}
+      />
       <h3 className="mt-4 text-sm font-medium">Brief and budget</h3>
       <dl className="mt-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
         {fields.map(([label, value]) => (
@@ -93,7 +113,11 @@ export function ManagedRunEvidence({
       ) : (
         <ul className="mt-2 space-y-2 text-sm">
           {run.stages.map((stage) => (
-            <li className="rounded-md border p-2 break-words" key={stage.stageId}>
+            <li
+              id={`stage-${stage.stageId}`}
+              className={`rounded-md border p-2 break-words ${selectedStage === stage.stageId ? "ring-2 ring-info" : ""}`}
+              key={stage.stageId}
+            >
               <p className="font-medium">
                 {stage.role} · {stageStatusLabels.get(stage.status) ?? stage.status}
               </p>
@@ -104,7 +128,11 @@ export function ManagedRunEvidence({
               {run.stageAttempts
                 ?.filter((attempt) => attempt.stageId === stage.stageId)
                 .map((attempt) => (
-                  <details className="mt-2" key={attempt.attemptId}>
+                  <details
+                    className="mt-2"
+                    key={`${attempt.attemptId}:${selectedStage === stage.stageId}`}
+                    open={selectedStage === stage.stageId || undefined}
+                  >
                     <summary className="cursor-pointer">
                       {attempt.actualModel ?? attempt.providerInstanceId} {"·"} {attempt.status}{" "}
                       {"·"} Usage {attempt.usageStatus}

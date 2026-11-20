@@ -9,10 +9,13 @@ import {
 
 import type { ReactNode } from "react";
 
+import { FleetBoard } from "~/components/FleetBoard";
 import { ManagedRunEvidence } from "~/components/ManagedRunEvidence";
+import { SidecarSettings } from "~/components/SidecarSettings";
 import { deliveryCiRun, parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
 import { fetchDeliverySidecar } from "~/lib/deliverySidecarFetch";
 import { parseManagedRunId, readManagedRun } from "~/lib/managedRunDelivery";
+import { readFleetOverview, readSidecarStatus } from "~/lib/sidecarApi";
 import {
   readPullRequestDelivery,
   type PullRequestDelivery,
@@ -34,6 +37,13 @@ interface Delivery {
   };
   qa: { verdict: string; threadId: string; traceId: string };
 }
+
+const views = [
+  ["evidence", "Evidence"],
+  ["fleet", "Fleet"],
+  ["sidecar", "Sidecar settings"],
+] as const;
+type DeliveryView = (typeof views)[number][0];
 
 const validTicket = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const commitSha = /^[a-f0-9]{40}$/;
@@ -147,8 +157,8 @@ function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
 function DeliveryPage() {
   const router = useRouter();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { ticket, pr, run } = Route.useSearch();
-  const { delivery, pullRequestDelivery, managedRun } = Route.useLoaderData();
+  const { ticket, pr, run, view = "evidence" } = Route.useSearch();
+  const { delivery, pullRequestDelivery, managedRun, fleet, sidecar } = Route.useLoaderData();
   const loading = useRouterState({ select: (state) => state.isLoading });
   const ciStatus =
     delivery?.ci.status === "passed" && delivery.ci.head !== delivery.pullRequest.head
@@ -182,138 +192,173 @@ function DeliveryPage() {
           Refresh
         </button>
       </div>
-      <form
-        className="mt-4 flex items-end gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const value = new FormData(event.currentTarget).get("ticket");
-          if (typeof value === "string" && validTicket.test(value)) {
-            void navigate({ search: { ticket: value } });
-          }
-        }}
-      >
-        <label className="flex flex-col gap-1 text-sm">
-          Ticket
-          <input
-            key={ticket}
-            className="rounded-md border bg-transparent px-3 py-1"
-            defaultValue={ticket}
-            maxLength={64}
-            name="ticket"
-            pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}"
-            required
-          />
-        </label>
-        <button className="rounded-md border px-3 py-1 text-sm" type="submit">
-          Open ticket
-        </button>
-      </form>
-      <form
-        className="mt-4 flex items-end gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const value = new FormData(event.currentTarget).get("pr");
-          if (typeof value === "string" && parseDeliveryPullRequestUrl(value)) {
-            void navigate({ search: { pr: value.trim() } });
-          } else {
-            const field = event.currentTarget.elements.namedItem("pr");
-            if (field instanceof HTMLInputElement) {
-              field.setCustomValidity("Enter a GitHub pull request URL.");
-              field.reportValidity();
-            }
-          }
-        }}
-      >
-        <label className="flex flex-col gap-1 text-sm">
-          Pull request URL
-          <input
-            key={pr}
-            className="rounded-md border bg-transparent px-3 py-1"
-            defaultValue={pr}
-            name="pr"
-            type="url"
-            required
-            onInput={(event) => event.currentTarget.setCustomValidity("")}
-          />
-        </label>
-        <button className="rounded-md border px-3 py-1 text-sm" type="submit">
-          Open Delivery
-        </button>
-      </form>
-      <form
-        className="mt-4 flex items-end gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const value = parseManagedRunId(new FormData(event.currentTarget).get("run"));
-          if (value) {
-            void navigate({ search: { run: value } });
-          } else {
-            const field = event.currentTarget.elements.namedItem("run");
-            if (field instanceof HTMLInputElement) {
-              field.setCustomValidity("Enter a managed run UUID.");
-              field.reportValidity();
-            }
-          }
-        }}
-      >
-        <label className="flex flex-col gap-1 text-sm">
-          Managed run ID
-          <input
-            key={run}
-            className="rounded-md border bg-transparent px-3 py-1"
-            defaultValue={run}
-            name="run"
-            required
-            onInput={(event) => event.currentTarget.setCustomValidity("")}
-          />
-        </label>
-        <button className="rounded-md border px-3 py-1 text-sm" type="submit">
-          Open managed run
-        </button>
-      </form>
-      {run && (loading || !managedRun) && (
-        <p className="mt-4 text-sm" role="status">
-          {loading
-            ? "Reading managed run…"
-            : "Managed run unavailable. Check the run ID and sidecar connection."}
-        </p>
-      )}
-      {managedRun && !loading && <ManagedRunEvidence run={managedRun} />}
-      {!run && pr && (loading || !pullRequestDelivery) && (
-        <p className="mt-4 text-sm" role="status">
-          {loading
-            ? "Reading pull request evidence…"
-            : "Pull request evidence unavailable. Check GitHub access and the sidecar connection."}
-        </p>
-      )}
-      {pullRequestDelivery && !loading && <PullRequestEvidence delivery={pullRequestDelivery} />}
-      {!run && ticket && (loading || !delivery) && (
-        <p className="mt-4 text-sm" role="status">
-          {loading ? "Reading delivery evidence…" : "Delivery sidecar unavailable."}
-        </p>
-      )}
-      {delivery && !loading && (
-        <article className="mt-4 max-w-2xl rounded-lg border p-4">
-          <h2 className="font-medium">
-            {delivery.ticket} ·{" "}
-            <a
-              className="underline"
-              href={delivery.pullRequest.url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              PR #{delivery.pullRequest.number}
-            </a>
-          </h2>
-          <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
-            {fields.map(([label, value]) => (
-              <div className="contents" key={label}>
-                <dt className="text-muted-foreground">{label}</dt>
-                <dd className="break-all">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </article>
+      <nav className="mt-3 flex flex-wrap gap-2 text-sm" aria-label="Delivery views">
+        {views.map(([id, label]) => (
+          <Link
+            key={id}
+            to="/delivery"
+            search={id === "evidence" ? {} : { view: id }}
+            aria-current={view === id ? "page" : undefined}
+            className={`rounded-md border px-3 py-1 ${view === id ? "bg-muted font-semibold" : ""}`}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+      {view === "fleet" &&
+        (loading ? (
+          <p className="mt-4 text-sm" role="status">
+            Reading the fleet overview…
+          </p>
+        ) : (
+          <FleetBoard overview={fleet} onRefresh={() => void router.invalidate()} />
+        ))}
+      {view === "sidecar" &&
+        (loading ? (
+          <p className="mt-4 text-sm" role="status">
+            Reading the sidecar…
+          </p>
+        ) : (
+          <SidecarSettings status={sidecar} onChanged={() => void router.invalidate()} />
+        ))}
+      {view === "evidence" && (
+        <>
+          <form
+            className="mt-4 flex items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const value = new FormData(event.currentTarget).get("ticket");
+              if (typeof value === "string" && validTicket.test(value)) {
+                void navigate({ search: { ticket: value } });
+              }
+            }}
+          >
+            <label className="flex flex-col gap-1 text-sm">
+              Ticket
+              <input
+                key={ticket}
+                className="rounded-md border bg-transparent px-3 py-1"
+                defaultValue={ticket}
+                maxLength={64}
+                name="ticket"
+                pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}"
+                required
+              />
+            </label>
+            <button className="rounded-md border px-3 py-1 text-sm" type="submit">
+              Open ticket
+            </button>
+          </form>
+          <form
+            className="mt-4 flex items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const value = new FormData(event.currentTarget).get("pr");
+              if (typeof value === "string" && parseDeliveryPullRequestUrl(value)) {
+                void navigate({ search: { pr: value.trim() } });
+              } else {
+                const field = event.currentTarget.elements.namedItem("pr");
+                if (field instanceof HTMLInputElement) {
+                  field.setCustomValidity("Enter a GitHub pull request URL.");
+                  field.reportValidity();
+                }
+              }
+            }}
+          >
+            <label className="flex flex-col gap-1 text-sm">
+              Pull request URL
+              <input
+                key={pr}
+                className="rounded-md border bg-transparent px-3 py-1"
+                defaultValue={pr}
+                name="pr"
+                type="url"
+                required
+                onInput={(event) => event.currentTarget.setCustomValidity("")}
+              />
+            </label>
+            <button className="rounded-md border px-3 py-1 text-sm" type="submit">
+              Open Delivery
+            </button>
+          </form>
+          <form
+            className="mt-4 flex items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const value = parseManagedRunId(new FormData(event.currentTarget).get("run"));
+              if (value) {
+                void navigate({ search: { run: value } });
+              } else {
+                const field = event.currentTarget.elements.namedItem("run");
+                if (field instanceof HTMLInputElement) {
+                  field.setCustomValidity("Enter a managed run UUID.");
+                  field.reportValidity();
+                }
+              }
+            }}
+          >
+            <label className="flex flex-col gap-1 text-sm">
+              Managed run ID
+              <input
+                key={run}
+                className="rounded-md border bg-transparent px-3 py-1"
+                defaultValue={run}
+                name="run"
+                required
+                onInput={(event) => event.currentTarget.setCustomValidity("")}
+              />
+            </label>
+            <button className="rounded-md border px-3 py-1 text-sm" type="submit">
+              Open managed run
+            </button>
+          </form>
+          {run && (loading || !managedRun) && (
+            <p className="mt-4 text-sm" role="status">
+              {loading
+                ? "Reading managed run…"
+                : "Managed run unavailable. Check the run ID and sidecar connection."}
+            </p>
+          )}
+          {managedRun && !loading && <ManagedRunEvidence run={managedRun} />}
+          {!run && pr && (loading || !pullRequestDelivery) && (
+            <p className="mt-4 text-sm" role="status">
+              {loading
+                ? "Reading pull request evidence…"
+                : "Pull request evidence unavailable. Check GitHub access and the sidecar connection."}
+            </p>
+          )}
+          {pullRequestDelivery && !loading && (
+            <PullRequestEvidence delivery={pullRequestDelivery} />
+          )}
+          {!run && ticket && (loading || !delivery) && (
+            <p className="mt-4 text-sm" role="status">
+              {loading ? "Reading delivery evidence…" : "Delivery sidecar unavailable."}
+            </p>
+          )}
+          {delivery && !loading && (
+            <article className="mt-4 max-w-2xl rounded-lg border p-4">
+              <h2 className="font-medium">
+                {delivery.ticket} ·{" "}
+                <a
+                  className="underline"
+                  href={delivery.pullRequest.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  PR #{delivery.pullRequest.number}
+                </a>
+              </h2>
+              <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+                {fields.map(([label, value]) => (
+                  <div className="contents" key={label}>
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="break-all">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </article>
+          )}
+        </>
       )}
     </main>
   );
@@ -322,7 +367,13 @@ function DeliveryPage() {
 export const Route = createFileRoute("/_chat/delivery")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { ticket?: string | undefined; pr?: string | undefined; run?: string | undefined } => ({
+  ): {
+    ticket?: string | undefined;
+    pr?: string | undefined;
+    run?: string | undefined;
+    view?: DeliveryView | undefined;
+  } => ({
+    view: views.find(([id]) => id === search.view)?.[0],
     ticket:
       typeof search.ticket === "string" && validTicket.test(search.ticket)
         ? search.ticket
@@ -333,7 +384,12 @@ export const Route = createFileRoute("/_chat/delivery")({
         : undefined,
     run: parseManagedRunId(search.run),
   }),
-  loaderDeps: ({ search }) => ({ ticket: search.ticket, pr: search.pr, run: search.run }),
+  loaderDeps: ({ search }) => ({
+    ticket: search.ticket,
+    pr: search.pr,
+    run: search.run,
+    view: search.view,
+  }),
   loader: async ({ abortController, deps }) => ({
     delivery:
       !deps.run && !deps.pr && deps.ticket
@@ -342,6 +398,8 @@ export const Route = createFileRoute("/_chat/delivery")({
     pullRequestDelivery:
       !deps.run && deps.pr ? await readPullRequestDelivery(deps.pr, abortController.signal) : null,
     managedRun: deps.run ? await readManagedRun(deps.run, abortController.signal) : null,
+    fleet: deps.view === "fleet" ? await readFleetOverview(abortController.signal) : null,
+    sidecar: deps.view === "sidecar" ? await readSidecarStatus(abortController.signal) : null,
   }),
   component: DeliveryPage,
 });

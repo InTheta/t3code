@@ -173,9 +173,14 @@ function WorkflowPage() {
             <h1 className="text-2xl font-semibold">Workflow</h1>
             <p className={subdued}>Live thread activity and Delivery evidence</p>
           </div>
-          <Link className={link} to="/usage">
-            Usage
-          </Link>
+          <div className="flex gap-4">
+            <Link className={link} to="/delivery" search={{ view: "fleet" }}>
+              Fleet
+            </Link>
+            <Link className={link} to="/usage">
+              Usage
+            </Link>
+          </div>
         </header>
         <label className="grid gap-1 text-sm">
           Thread
