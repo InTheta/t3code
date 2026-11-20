@@ -39,6 +39,7 @@ import {
   OrchestrationV2Actor,
   OrchestrationV2CreationSource,
   OrchestrationV2DelegatedFrom,
+  OrchestrationV2ProviderFailureClass,
   OrchestrationV2RunStatus,
   OrchestrationV2TurnItemStatus,
 } from "./orchestrationV2.ts";
@@ -468,6 +469,16 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   creationSource: OrchestrationV2CreationSource,
   status: OrchestratorMcpThreadStatus,
   latestRunId: Schema.NullOr(RunId),
+  /** Provider failure from the latest failed run, when the server can bind the two. */
+  latestRunFailureClass: Schema.optional(OrchestrationV2ProviderFailureClass),
+  latestRunContinuation: Schema.optional(
+    Schema.Struct({
+      sourceRunId: RunId,
+      commandMessageId: MessageId,
+      providerInstanceId: ProviderInstanceId,
+      model: Schema.String,
+    }),
+  ),
   activeRunId: Schema.NullOr(RunId),
   providerInstanceId: ProviderInstanceId,
   model: Schema.String,

@@ -158,6 +158,7 @@ export interface ThreadManagementSendInput {
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly modelSelection?: ModelSelection;
   readonly mode: ThreadManagementSendMode;
+  readonly manualContinuationOfRunId?: RunId;
   /** Start a new provider session; the orchestrator queues it instead of steering. */
   readonly freshContext?: boolean;
   readonly createdBy: OrchestrationV2Actor;
@@ -882,7 +883,9 @@ const make = Effect.gen(function* () {
         ? "queue"
         : input.mode;
     const explicitSteer = mode === "steer" || mode === "restart";
-    const missingSteeringTarget = explicitSteer && steerableRun === undefined;
+    // A manual continuation after a quota stop always starts a new turn, so it needs no steer target.
+    const missingSteeringTarget =
+      explicitSteer && steerableRun === undefined && input.manualContinuationOfRunId === undefined;
     // A command receipt outlives its target turn. Dispatch validates and replays it.
     if (missingSteeringTarget && !(yield* hasReceipt(input.commandId))) {
       return yield* new ThreadManagementNoSteerableRunError({
@@ -895,7 +898,9 @@ const make = Effect.gen(function* () {
       OrchestrationV2Command,
       { readonly type: "message.dispatch" }
     >["dispatchMode"];
-    if ((explicitSteer || mode === "auto") && steerableRun !== undefined) {
+    if (input.manualContinuationOfRunId !== undefined) {
+      dispatchMode = { type: "start_immediately" };
+    } else if ((explicitSteer || mode === "auto") && steerableRun !== undefined) {
       dispatchMode = {
         type: mode === "restart" ? "restart_active" : "steer_active",
         targetRunId: steerableRun.id,
@@ -939,7 +944,11 @@ const make = Effect.gen(function* () {
       ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
       ...(input.freshContext ? { freshContext: true } : {}),
       dispatchMode,
-      ...(mode === "auto" ? { deliveryIntent: "auto" } : {}),
+      ...(input.manualContinuationOfRunId !== undefined
+        ? { manualContinuationOfRunId: input.manualContinuationOfRunId }
+        : mode === "auto"
+          ? { deliveryIntent: "auto" }
+          : {}),
       createdBy: input.createdBy,
       creationSource: input.creationSource,
     });
@@ -959,10 +968,16 @@ const make = Effect.gen(function* () {
         ): candidate is Extract<OrchestrationV2TurnItem, { readonly type: "user_message" }> =>
           candidate.type === "user_message" && candidate.messageId === input.messageId,
       ) ?? null;
+    // A native resume records a notification instead of a user-message turn item.
+    const resumed =
+      input.manualContinuationOfRunId !== undefined &&
+      run?.manualContinuationOfRunId === input.manualContinuationOfRunId &&
+      run.userMessageId === input.messageId;
     if (
       message === undefined ||
       run === undefined ||
-      (turnItem === null && run.status !== "queued")
+      (input.manualContinuationOfRunId !== undefined && !resumed) ||
+      (turnItem === null && run.status !== "queued" && !resumed)
     ) {
       return yield* new ThreadManagementDurableRunProjectionError({
         threadId: input.threadId,
@@ -981,13 +996,15 @@ const make = Effect.gen(function* () {
       );
     const delivery: ThreadManagementSendResult["delivery"] = restartedAsNextTurn
       ? "restarted"
-      : turnItem === null || turnItem.inputIntent === "queued_turn"
-        ? "queued"
-        : turnItem.inputIntent === "turn_start"
-          ? "started"
-          : mode === "restart"
-            ? "restarted"
-            : "steered";
+      : resumed
+        ? "started"
+        : turnItem === null || turnItem.inputIntent === "queued_turn"
+          ? "queued"
+          : turnItem.inputIntent === "turn_start"
+            ? "started"
+            : mode === "restart"
+              ? "restarted"
+              : "steered";
     return { dispatch: dispatched, projection, message, run, turnItem, delivery };
   });
 

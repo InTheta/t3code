@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import type { ManagedRun } from "~/lib/managedRunDelivery";
 import { useQuietThreadShell } from "~/state/entities";
 import { usePrimaryEnvironmentId } from "~/state/environments";
+import { QuotaHandoffDialog } from "./QuotaHandoffDialog";
 
 function WorkerThread({ id }: { id: string | null }) {
   const environmentId = usePrimaryEnvironmentId();
@@ -28,7 +29,19 @@ function formatCount(value: number | null): string {
   return value === null ? "Unknown" : value.toLocaleString();
 }
 
-export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
+const stageStatusLabels = new Map([
+  ["waiting_for_operator", "Waiting for operator"],
+  ["paused_provider_quota", "Paused on provider quota"],
+  ["cancelling_quota", "Cancelling provider replacement"],
+]);
+
+export function ManagedRunEvidence({
+  run,
+  allowQuotaDecisions = false,
+}: {
+  run: ManagedRun;
+  allowQuotaDecisions?: boolean;
+}) {
   const { brief, budget, qa } = run;
   const fields = [
     ["Run ID", run.runId],
@@ -81,13 +94,48 @@ export function ManagedRunEvidence({ run }: { run: ManagedRun }) {
           {run.stages.map((stage) => (
             <li className="rounded-md border p-2 break-words" key={stage.stageId}>
               <p className="font-medium">
-                {stage.role} ·{" "}
-                {stage.status === "waiting_for_operator" ? "Waiting for operator" : stage.status}
+                {stage.role} · {stageStatusLabels.get(stage.status) ?? stage.status}
               </p>
               <p>Stage ID {stage.stageId}</p>
               <p>Provider instance {stage.providerInstanceId ?? "Unknown"}</p>
               <WorkerThread id={stage.threadId} />
               <p>Tool calls {formatCount(stage.toolCalls ?? null)}</p>
+              {run.stageAttempts
+                ?.filter((attempt) => attempt.stageId === stage.stageId)
+                .map((attempt) => (
+                  <details className="mt-2" key={attempt.attemptId}>
+                    <summary className="cursor-pointer">
+                      {attempt.actualModel ?? attempt.providerInstanceId} {"·"} {attempt.status}{" "}
+                      {"·"} Usage {attempt.usageStatus}
+                    </summary>
+                    <dl className="ml-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3">
+                      <dt>Input tokens</dt>
+                      <dd>{formatCount(attempt.tokens.inputTokens)}</dd>
+                      <dt>Cached input tokens</dt>
+                      <dd>{formatCount(attempt.tokens.cachedInputTokens)}</dd>
+                      <dt>Cache creation tokens</dt>
+                      <dd>{formatCount(attempt.tokens.cacheCreationTokens)}</dd>
+                      <dt>Output tokens</dt>
+                      <dd>{formatCount(attempt.tokens.outputTokens)}</dd>
+                      <dt>Reasoning tokens</dt>
+                      <dd>{formatCount(attempt.tokens.reasoningTokens)}</dd>
+                      <dt>Requested reasoning</dt>
+                      <dd>{attempt.requestedReasoningEffort ?? "Unknown"}</dd>
+                    </dl>
+                  </details>
+                ))}
+              {stage.status === "paused_provider_quota" && (
+                <p className="mt-1 text-muted-foreground">
+                  Open the worker thread to inspect the usage limit.
+                </p>
+              )}
+              {allowQuotaDecisions &&
+                run.status === "approved" &&
+                stage.status === "paused_provider_quota" && (
+                  <div className="mt-2">
+                    <QuotaHandoffDialog run={run} stage={stage} />
+                  </div>
+                )}
               {stage.status === "waiting_for_operator" && (
                 <p className="mt-1 text-muted-foreground">
                   Review the pending request in the worker thread to continue.

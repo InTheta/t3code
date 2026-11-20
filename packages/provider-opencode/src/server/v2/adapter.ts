@@ -610,13 +610,16 @@ const claudeUsageLimit = (message: string | undefined) =>
 
 // OpenCode types an empty balance as provider.quota too, but it answers
 // that with HTTP 402 and it never resets. Usage windows and budgets are 429.
-const isUsageLimit = (error: {
+export const isUsageLimit = (error: {
   readonly type: string;
   readonly status?: number | undefined;
   readonly message: string;
 }) =>
   (error.type === "provider.quota" && error.status !== 402) ||
   error.type === "provider.rate-limit" ||
+  error.type === "provider.go-limit" ||
+  error.type === "provider.free-limit" ||
+  error.type === "provider.chatgpt-limit" ||
   claudeUsageLimit(error.message) !== undefined;
 
 const INTERRUPT_TIMEOUT = 10_000;

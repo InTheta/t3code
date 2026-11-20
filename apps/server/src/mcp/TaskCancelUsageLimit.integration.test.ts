@@ -55,8 +55,9 @@ it.effect.each([
   { cancel: "after its limit", cancelStatus: "failed", resumed: false },
   { cancel: "as its limit lands", cancelStatus: "cancel_requested", resumed: false },
   { cancel: "never", cancelStatus: null, resumed: true },
+  { cancel: "manual replacement", cancelStatus: null, resumed: true },
 ] as const)(
-  "a delegated child whose task is cancelled $cancel resumes at the reset: $resumed",
+  "preserves exact run identity when a usage-limited child is handled $cancel",
   ({ cancel, cancelStatus, resumed }) =>
     Effect.gen(function* () {
       const cwd = yield* checkpointWorkspace("task-cancel-usage-limit");
@@ -66,7 +67,10 @@ it.effect.each([
         readonly turn: ProviderAdapter.ProviderAdapterV2TurnInput;
         readonly events: Queue.Queue<ProviderAdapter.ProviderAdapterV2Event>;
       }> = [];
-      const adapter: ProviderAdapter.ProviderAdapterV2["Service"] = {
+      const makeAdapter = (
+        instanceId: ProviderInstanceId,
+        driver: ProviderDriverKind,
+      ): ProviderAdapter.ProviderAdapterV2["Service"] => ({
         instanceId,
         driver,
         getCapabilities: () => Effect.succeed(ClaudeProviderCapabilitiesV2),
@@ -75,6 +79,25 @@ it.effect.each([
           Effect.gen(function* () {
             const now = yield* DateTime.now;
             const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+            const startTurn = (turn: ProviderAdapter.ProviderAdapterV2TurnInput) =>
+              Effect.gen(function* () {
+                turns.push({ turn, events });
+                yield* Queue.offer(events, {
+                  type: "provider_turn.updated",
+                  driver,
+                  providerTurn: {
+                    id: ProviderTurnId.make(`provider-turn:${turn.attemptId}`),
+                    providerThreadId: turn.providerThread.id,
+                    nodeId: turn.rootNodeId,
+                    runAttemptId: turn.attemptId,
+                    nativeTurnRef: null,
+                    ordinal: turn.providerTurnOrdinal,
+                    status: "running",
+                    startedAt: now,
+                    completedAt: null,
+                  },
+                });
+              });
             return {
               instanceId,
               driver,
@@ -94,13 +117,17 @@ it.effect.each([
               events: Stream.fromQueue(events),
               ensureThread: ({ threadId }) =>
                 Effect.succeed({
-                  id: ProviderThreadId.make(`provider-thread:${threadId}`),
+                  id: ProviderThreadId.make(`provider-thread:${instanceId}:${threadId}`),
                   driver,
                   providerInstanceId: instanceId,
                   providerSessionId: input.providerSessionId,
                   appThreadId: threadId,
                   ownerNodeId: null,
-                  nativeThreadRef: { driver, nativeId: `native:${threadId}`, strength: "strong" },
+                  nativeThreadRef: {
+                    driver,
+                    nativeId: `native:${instanceId}:${threadId}`,
+                    strength: "strong",
+                  },
                   nativeConversationHeadRef: null,
                   status: "idle",
                   firstRunOrdinal: null,
@@ -111,25 +138,8 @@ it.effect.each([
                   updatedAt: now,
                 }),
               resumeThread: ({ providerThread }) => Effect.succeed(providerThread),
-              startTurn: (turn) =>
-                Effect.gen(function* () {
-                  turns.push({ turn, events });
-                  yield* Queue.offer(events, {
-                    type: "provider_turn.updated",
-                    driver,
-                    providerTurn: {
-                      id: ProviderTurnId.make(`provider-turn:${turn.attemptId}`),
-                      providerThreadId: turn.providerThread.id,
-                      nodeId: turn.rootNodeId,
-                      runAttemptId: turn.attemptId,
-                      nativeTurnRef: null,
-                      ordinal: turn.providerTurnOrdinal,
-                      status: "running",
-                      startedAt: now,
-                      completedAt: null,
-                    },
-                  });
-                }),
+              startTurn,
+              resumeTurn: (turn) => startTurn(ProviderAdapter.resumeTurnInput(turn)),
               steerTurn: () => Effect.die("unused"),
               interruptTurn: () => Effect.suspend(() => limitInFlight),
               respondToRuntimeRequest: () => Effect.die("unused"),
@@ -138,8 +148,17 @@ it.effect.each([
               forkThread: () => Effect.die("unused"),
             };
           }),
+      });
+      const replacementDriver = ProviderDriverKind.make("codex");
+      const replacementInstance = ProviderInstanceId.make("codex-quota-replacement");
+      const replacementModel = {
+        instanceId: replacementInstance,
+        model: "codex-test-replacement",
       };
-      const layerAdapters = ProviderAdapterRegistry.layerSingle(adapter);
+      const layerAdapters = ProviderAdapterRegistry.layerFromAdapters([
+        makeAdapter(instanceId, driver),
+        makeAdapter(replacementInstance, replacementDriver),
+      ]);
       const layerOrchestrator = ProviderReplayHarness.layerWithRegistry(
         { name: "task-cancel-usage-limit" },
         layerAdapters,
@@ -149,7 +168,14 @@ it.effect.each([
         layerOrchestrator,
         ThreadManagementService.layer.pipe(
           Layer.provide(layerOrchestrator),
-          Layer.provide(ServerSettings.layerTest()),
+          Layer.provide(
+            ServerSettings.layerTest({
+              providerInstances: {
+                [instanceId]: { driver, enabled: true },
+                [replacementInstance]: { driver: replacementDriver, enabled: true },
+              },
+            }),
+          ),
           Layer.provide(
             CommandReceiptStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
           ),
@@ -333,6 +359,58 @@ it.effect.each([
         yield* Fiber.join(childFailed);
         yield* worker.drain();
 
+        const failedThread = yield* service.readThread(scope, { threadId: childThreadId });
+        assert.equal(failedThread.thread.latestRunId, child.turn.runId);
+        assert.equal(failedThread.thread.latestRunFailureClass, "usage_limit");
+
+        if (cancel === "manual replacement") {
+          const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+          const dispatch = threadManagement.sendToThread({
+            projectId: failedThread.thread.projectId,
+            threadId: childThreadId,
+            commandId: CommandId.make("approved:quota-replacement"),
+            messageId: MessageId.make("approved:quota-replacement"),
+            manualContinuationOfRunId: child.turn.runId,
+            modelSelection: replacementModel,
+            text: "",
+            attachments: [],
+            mode: "auto",
+            createdBy: "user",
+            creationSource: "mcp",
+          });
+          const first = yield* dispatch;
+          // Drop the first response and repeat the same approved command.
+          const replay = yield* dispatch;
+          assert.equal(first.delivery, "started");
+          assert.equal(first.run.id, replay.run.id);
+          assert.equal(replay.run.threadId, childThreadId);
+          assert.equal(replay.run.manualContinuationOfRunId, child.turn.runId);
+          assert.deepEqual(replay.run.modelSelection, replacementModel);
+          yield* worker.drain();
+          const replacementTurns = turns.filter(({ turn }) => turn.runId === replay.run.id);
+          const replacementProjection = yield* orchestrator.getThreadProjection(childThreadId);
+          assert.lengthOf(replacementTurns, 1);
+          const replacement = replacementTurns[0]!.turn;
+          assert.equal(replacement.threadId, childThreadId);
+          assert.equal(replacement.providerThread.providerInstanceId, replacementInstance);
+          assert.notEqual(replacement.providerThread.id, child.turn.providerThread.id);
+          assert.lengthOf(replacementProjection.runs, 2);
+          const recovered = yield* service.readThread(scope, { threadId: childThreadId });
+          assert.equal(recovered.thread.latestRunId, replay.run.id);
+          assert.deepEqual(recovered.thread.latestRunContinuation, {
+            sourceRunId: child.turn.runId,
+            commandMessageId: "approved:quota-replacement",
+            providerInstanceId: replacementInstance,
+            model: replacementModel.model,
+          });
+          assert.ok(
+            replacementProjection.contextHandoffs.some(
+              (handoff) => handoff.toProviderThreadId === replacement.providerThread.id,
+            ),
+          );
+          return;
+        }
+
         // The sweep runs every few seconds, so it arms the child before a parent reacts.
         yield* sweep;
         if (cancel === "after its limit") cancelled = yield* cancelTask;
@@ -345,6 +423,11 @@ it.effect.each([
           childAfter.messages.flatMap((message) => (message.role === "user" ? [message.text] : [])),
           resumed ? ["Review the change", "Continue where you left off."] : ["Review the change"],
         );
+        if (resumed) {
+          const continuedThread = yield* service.readThread(scope, { threadId: childThreadId });
+          assert.notEqual(continuedThread.thread.latestRunId, child.turn.runId);
+          assert.isUndefined(continuedThread.thread.latestRunFailureClass);
+        }
       }).pipe(Effect.provide(layerTest));
     }),
 );
