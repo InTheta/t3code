@@ -47,6 +47,17 @@ const trace: Provenance = {
   ticket: "LAB-7",
   status: "approved",
   traceId: "1".repeat(32),
+  owner: {
+    humanOwner: "alex-dev",
+    requestedBy: "alex-dev",
+    approvedBy: "alex@example.test",
+    prAuthor: "alex-dev",
+    mergedBy: "sam-reviewer",
+    commitAuthors: ["alex-dev", "claude-agent[bot]"],
+    prNumber: 7,
+    prUrl: "https://github.com/lab/fixture/pull/7",
+    prState: "merged",
+  },
   traceable: 1,
   total: 2,
   decisions: [
