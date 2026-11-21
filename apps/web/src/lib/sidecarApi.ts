@@ -499,7 +499,19 @@ export interface TracedDecision {
     readonly message: string;
   }[];
 }
+export interface RunOwner {
+  readonly humanOwner: string | null;
+  readonly requestedBy: string | null;
+  readonly approvedBy: string | null;
+  readonly prAuthor: string | null;
+  readonly mergedBy: string | null;
+  readonly commitAuthors: readonly string[];
+  readonly prNumber: number | null;
+  readonly prUrl: string | null;
+  readonly prState: string | null;
+}
 export interface Provenance {
+  readonly owner: RunOwner | null;
   readonly runId: string;
   readonly ticket: string;
   readonly status: string;
@@ -567,6 +579,25 @@ export function parseQuality(value: unknown): Quality | null {
   };
 }
 
+function parseOwner(value: unknown): RunOwner | null {
+  if (!isRecord(value)) return null;
+  const pr = isRecord(value.pr) ? value.pr : {};
+  const url = str(pr.url);
+  return {
+    humanOwner: str(value.humanOwner),
+    requestedBy: str(value.requestedBy),
+    approvedBy: str(value.approvedBy),
+    prAuthor: str(value.prAuthor),
+    mergedBy: str(value.mergedBy),
+    commitAuthors: Array.isArray(value.commitAuthors)
+      ? value.commitAuthors.filter((name): name is string => typeof name === "string")
+      : [],
+    prNumber: typeof pr.number === "number" ? pr.number : null,
+    prUrl: url && /^https:\/\/github\.com\//.test(url) ? url : null,
+    prState: str(pr.state),
+  };
+}
+
 export function parseProvenance(value: unknown): Provenance | null {
   if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.decisions)) return null;
   const decisions: TracedDecision[] = [];
@@ -608,6 +639,7 @@ export function parseProvenance(value: unknown): Provenance | null {
     ticket: str(value.ticket) ?? "",
     status: str(value.status) ?? "",
     traceId: str(value.traceId),
+    owner: parseOwner(value.owner),
     traceable: count(value.traceable),
     total: count(value.total),
     decisions,

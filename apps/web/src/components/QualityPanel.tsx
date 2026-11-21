@@ -13,6 +13,41 @@ function percent(value: number | null): string {
   return value === null ? "no decisions yet" : `${Math.round(value * 100)}%`;
 }
 
+function OwnerLine({ owner }: { owner: NonNullable<Provenance["owner"]> }) {
+  const rows: [string, string | null][] = [
+    ["Accountable person", owner.humanOwner],
+    ["Approved by", owner.approvedBy],
+    ["Pull request author", owner.prAuthor],
+    ["Merged by", owner.mergedBy],
+    ["Commit authors", owner.commitAuthors.length > 0 ? owner.commitAuthors.join(", ") : null],
+  ];
+  return (
+    <dl className="mt-3 grid max-w-xl grid-cols-[max-content_1fr] gap-x-6 gap-y-1 rounded-lg border p-3 text-sm">
+      {rows.map(([label, value]) => (
+        <div key={label} className="contents">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd>{value ?? "not recorded"}</dd>
+        </div>
+      ))}
+      {owner.prNumber !== null && (
+        <div className="contents">
+          <dt className="text-muted-foreground">Pull request</dt>
+          <dd>
+            {owner.prUrl ? (
+              <a className="underline" href={owner.prUrl} target="_blank" rel="noreferrer noopener">
+                #{owner.prNumber}
+              </a>
+            ) : (
+              `#${owner.prNumber}`
+            )}
+            {owner.prState ? ` · ${owner.prState}` : ""}
+          </dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
 function DecisionTrace({ trace }: { trace: Provenance }) {
   return (
     <section className="mt-6 max-w-3xl" aria-label={`Decisions of ${trace.ticket}`}>
@@ -23,6 +58,13 @@ function DecisionTrace({ trace }: { trace: Provenance }) {
         {trace.traceable} of {trace.total} decisions trace fully to who made them and the worker.
         {trace.traceId ? ` Trace ${trace.traceId}.` : ""}
       </p>
+      {trace.owner ? (
+        <OwnerLine owner={trace.owner} />
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No pull request is linked, so only the approver is known.
+        </p>
+      )}
       <ol className="mt-3 grid gap-3">
         {trace.decisions.map((decision) => (
           <li key={decision.id} className="rounded-lg border p-3 text-sm">
