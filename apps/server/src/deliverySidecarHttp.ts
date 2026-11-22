@@ -17,8 +17,9 @@ const ticket = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const pullRequest = /^pull-requests\/[a-z0-9-]+\/(?!\.{1,2}\/)[a-z0-9_.-]+\/[1-9][0-9]*$/i;
 const managedRun = /^managed-runs\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const sidecarRead =
-  /^sidecar\/(?:status|retention|overview|inbox|quality|retention\/proposals|provenance\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/;
-const sidecarWrite = /^sidecar\/retention(?:\/proposals(?:\/[0-9a-f]{16})?)?$/;
+  /^sidecar\/(?:status|retention|overview|inbox|quality|retention\/proposals|tracks|tracks\/[A-Za-z0-9][A-Za-z0-9._-]{0,62}|needs-human|needs-human\/[0-9a-f]{16}|provenance\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/;
+const sidecarWrite =
+  /^sidecar\/(?:retention(?:\/proposals(?:\/[0-9a-f]{16})?)?|needs-human\/[0-9a-f]{16})$/;
 const maxPolicyBody = 4096;
 const headers = { "cache-control": "no-store" };
 
@@ -83,7 +84,7 @@ const read = HttpRouter.add(
   }),
 );
 
-/** Changing the sidecar retention policy or deciding a cleanup proposal is an operator action; neither deletes anything. */
+/** Changing the sidecar retention policy, deciding a cleanup proposal, or deciding a request an agent raised for a person is an operator action; none deletes anything. Agents register tracks and raise requests on the host's loopback, never through here. */
 const writeSidecar = Effect.gen(function* () {
   const port = configuredPort();
   const request = yield* HttpServerRequest.HttpServerRequest;

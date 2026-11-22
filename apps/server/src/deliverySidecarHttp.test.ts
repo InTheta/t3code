@@ -182,6 +182,50 @@ it("serves sidecar status reads and writes retention only for operators", async 
     expect(new Headers(decisionInit?.headers).get("x-operator-subject")).toBe("fixture");
     expect(new Headers(decisionInit?.headers).get("authorization")).toBeNull();
 
+    const decideRequest = (id: string) =>
+      handler(
+        new Request(`${base}needs-human/${id}`, {
+          method: "PUT",
+          headers: {
+            authorization: "Bearer operator",
+            "content-type": "application/json",
+            "content-length": "22",
+          },
+          body: '{"decision":"resolve"}',
+        }),
+      );
+    expect((await decideRequest("zz")).status).toBe(404);
+    expect((await decideRequest("b".repeat(16))).status).toBe(200);
+    const [requestUrl, requestInit] = upstream.mock.calls[9] ?? [];
+    expect(String(requestUrl)).toBe(
+      `http://127.0.0.1:45678/delivery-sidecar/v1/sidecar/needs-human/${"b".repeat(16)}`,
+    );
+    expect(new Headers(requestInit?.headers).get("x-operator-subject")).toBe("fixture");
+    // Agents register tracks and raise requests on the host's loopback; the browser cannot.
+    const agentWrite = (resource: string) =>
+      handler(
+        new Request(`${base}${resource}`, {
+          method: "PUT",
+          headers: {
+            authorization: "Bearer operator",
+            "content-type": "application/json",
+            "content-length": "2",
+          },
+          body: "{}",
+        }),
+      );
+    expect((await agentWrite("needs-human")).status).toBe(404);
+    expect((await agentWrite("tracks/GH-327")).status).toBe(404);
+    for (const resource of ["tracks", "tracks/GH-327", "needs-human"]) {
+      expect(
+        (
+          await handler(
+            new Request(`${base}${resource}`, { headers: { authorization: "Bearer reader" } }),
+          )
+        ).status,
+      ).toBe(200);
+    }
+
     expect((await put("operator", '{"bad":1}')).status).toBe(400);
     vi.stubEnv("T3CODE_DELIVERY_SIDECAR_PORT", "");
     expect((await put("operator", '{"snapshot_days":3}')).status).toBe(404);
