@@ -35,9 +35,10 @@ if ! "${G[@]}" merge --no-ff --no-commit upstream/main >/dev/null 2>&1; then
     git checkout --theirs "$BUDGET" && git add "$BUDGET"
     . "$SRC/env.sh"; export PATH="$WT/node_modules/.bin:$PATH"
     vp i >"$STATE/install.log" 2>&1 || finish failed "install failed while resolving the budget file (branch $BR kept)" 1
+    # Use the task runner (vpr): right after an install, plain `vp test run` reports "no tests" (vitest cannot find its suite) until a task-runner run has happened.
     # The first cold vitest run sometimes reports "no tests"; retry until a run actually executes the suite.
     for _try in 1 2 3; do
-      (cd apps/server && vp test run src/provider/AgentContextBudget.test.ts >"$STATE/budget.log" 2>&1) || true
+      (cd apps/server && vpr test src/provider/AgentContextBudget.test.ts >"$STATE/budget.log" 2>&1) || true
       grep -q "Tests " "$STATE/budget.log" && ! grep -q "no tests" "$STATE/budget.log" && break
       sleep 3
     done
@@ -53,7 +54,7 @@ budget.update({k: int(v) for k, v in measured.items() if k in budget})
 json.dump(budget, open(path, "w"), indent=2); open(path, "a").write("\n")
 PY
     git add "$BUDGET"
-    (cd apps/server && vp test run src/provider/AgentContextBudget.test.ts >"$STATE/budget2.log" 2>&1) || finish failed "budget file still wrong after regenerating (branch $BR kept)" 1
+    (cd apps/server && vpr test src/provider/AgentContextBudget.test.ts >"$STATE/budget2.log" 2>&1) || finish failed "budget file still wrong after regenerating (branch $BR kept)" 1
   elif [ -z "$(git rerere remaining 2>/dev/null)" ] && [ -n "$(git rerere status 2>/dev/null)" ]; then
     # Every conflicted file was resolved by a recorded earlier resolution: stage them and carry on to the gates.
     git add -A
