@@ -15,6 +15,7 @@ ref="main"; post=0
 for arg in "$@"; do case "$arg" in --status) post=1;; *) ref="$arg";; esac; done
 : "${T3_SRC:?set T3_SRC to the Dell workspace that holds env.sh}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+gh_home="$HOME"; gh_xdg="$XDG_CONFIG_HOME"  # env.sh may move HOME; gh must keep using the real login
 export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/mnt/dell-workloads/builds/playwright-browsers}"
 here="$(cd "$(dirname "$0")" && pwd)"
 anchor="$(ls -d "$T3_SRC"/repo "$T3_SRC"/wt-* 2>/dev/null | head -n 1)"
@@ -52,7 +53,7 @@ overall=success; for k in install format typecheck lint tests; do case "${result
 } >"$out/$short.json"
 cat "$out/$short.json"
 if [ "$post" = 1 ]; then
-  gh api "repos/InTheta/t3code/statuses/$sha" -f state="$overall" -f context="dell/checks" \
+  HOME="$gh_home" XDG_CONFIG_HOME="$gh_xdg" gh api "repos/InTheta/t3code/statuses/$sha" -f state="$overall" -f context="dell/checks" \
     -f description="install ${result[install]}, typecheck ${result[typecheck]}, lint ${result[lint]}, tests ${result[tests]}" >/dev/null && echo "status posted"
 fi
 [ "$overall" = success ]
