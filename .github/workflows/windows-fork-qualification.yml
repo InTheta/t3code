@@ -1,0 +1,84 @@
+name: Windows fork qualification
+
+on:
+  push:
+    branches: [qualification/windows-20261122d]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    if: github.repository == 'InTheta/t3code'
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      T3_QUALIFICATION_SHA: ${{ github.sha }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Check out the pinned public source
+        shell: pwsh
+        run: |
+          git init
+          if ($LASTEXITCODE -ne 0) { throw "Git initialization failed" }
+          git config core.longpaths true
+          if ($LASTEXITCODE -ne 0) { throw "Git long-path setup failed" }
+          git fetch --no-tags --depth=1 https://github.com/InTheta/t3code.git $env:T3_QUALIFICATION_SHA
+          if ($LASTEXITCODE -ne 0) { throw "Pinned source fetch failed" }
+          git checkout --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "Pinned source checkout failed" }
+      - uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
+      - name: Verify source and prepare the MSVC target
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD) -ne $env:T3_QUALIFICATION_SHA) {
+            throw "Unexpected qualification source commit"
+          }
+          rustup target add x86_64-pc-windows-msvc
+      # The shared Vite+ cache publishes its Windows executable to Git Bash.
+      - name: Build the Windows x64 installer
+        id: package
+        shell: bash
+        run: |
+          export TEMP="$RUNNER_TEMP"
+          export TMP="$RUNNER_TEMP"
+          vp run dist:desktop:win:x64 --keep-stage --output-dir "$RUNNER_TEMP/t3-windows-qualification"
+      - name: Record rejected payload inventory
+        if: failure() && steps.package.outcome == 'failure'
+        shell: pwsh
+        run: |
+          $stage = @(Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Directory -Filter 't3code-desktop-win-stage-*')
+          if ($stage.Count -ne 1) { throw "Expected one retained package staging directory" }
+          $payload = @(Get-ChildItem -LiteralPath (Join-Path $stage[0].FullName 'app/dist') -Directory -Filter '*-unpacked')
+          if ($payload.Count -ne 1) { throw "Expected one unpacked Windows payload" }
+          $files = Get-ChildItem -LiteralPath $payload[0].FullName -File -Recurse -Force | ForEach-Object {
+            [pscustomobject]@{path=[IO.Path]::GetRelativePath($payload[0].FullName,$_.FullName).Replace('\','/');bytes=$_.Length}
+          }
+          $files | Sort-Object path | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/t3-rejected-payload.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure() && steps.package.outcome == 'failure'
+        with:
+          name: t3-rejected-payload-inventory
+          path: ${{ runner.temp }}/t3-rejected-payload.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Record installer identity
+        shell: pwsh
+        run: |
+          $output = "$env:RUNNER_TEMP/t3-windows-qualification"
+          $installer = @(Get-ChildItem -LiteralPath $output -Filter '*.exe' -File)
+          if ($installer.Count -ne 1) { throw "Expected one Windows installer" }
+          $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $installer[0].FullName
+          "$($hash.Hash.ToLowerInvariant())  $($installer[0].Name)" | Set-Content "$output/SHA256SUMS.txt"
+          $env:T3_QUALIFICATION_SHA | Set-Content "$output/SOURCE-SHA.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: t3-windows-x64-qualification
+          path: |
+            ${{ runner.temp }}/t3-windows-qualification/*.exe
+            ${{ runner.temp }}/t3-windows-qualification/SHA256SUMS.txt
+            ${{ runner.temp }}/t3-windows-qualification/SOURCE-SHA.txt
+          if-no-files-found: error
+          retention-days: 7
