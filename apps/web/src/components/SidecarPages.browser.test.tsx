@@ -5,7 +5,7 @@ import { userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../test/render";
 import type { FleetOverview, SidecarStatus } from "~/lib/sidecarApi";
-import { saveRetentionPolicy } from "~/lib/sidecarApi";
+import { decideRequest, saveRetentionPolicy } from "~/lib/sidecarApi";
 import type { FleetTask } from "~/lib/fleetFlow";
 import type { ManagedRun } from "~/lib/managedRunDelivery";
 import { FleetBoard } from "./FleetBoard";
@@ -23,6 +23,7 @@ vi.mock(import("~/state/entities"), async (original) => ({
 vi.mock(import("~/lib/sidecarApi"), async (original) => ({
   ...(await original()),
   saveRetentionPolicy: vi.fn(async () => ({ ok: true as const, policy: null })),
+  decideRequest: vi.fn(async () => ({ ok: true as const })),
 }));
 
 const sha = "a".repeat(40);
@@ -186,6 +187,57 @@ it("opens a task to show its journey, pull request and leftovers", async () => {
     .element(screen.getByRole("link", { name: "#11 merged" }))
     .toHaveAttribute("href", "https://github.com/InTheta/demo/pull/11");
   await expect.element(screen.getByText("Present, idle 30 days (stale)")).toBeVisible();
+});
+
+const requestId = "c".repeat(16);
+const trackTask: FleetTask = {
+  task: "GH-327",
+  title: "Kafka-free DEV continuation",
+  repository: null,
+  state: "running",
+  stale: [],
+  claimHeld: false,
+  validated: null,
+  publication: null,
+  workspace: { exists: false, idleDays: null, stale: false },
+  snapshots: 0,
+  idleDays: 0,
+  lastActivity: null,
+  track: {
+    phase: "waiting-human",
+    doing: "Reviewing the sealed manifest",
+    statusLine: "Reviewing the sealed manifest. Waiting on human Will: Approve activation",
+    waitingOn: { kind: "human", who: "Will", action: "Approve activation", requestId },
+    openRequests: [
+      {
+        id: requestId,
+        action: "Approve activation",
+        grantor: "Will",
+        deadline: "2026-11-22T18:20:00+00:00",
+      },
+    ],
+    links: ["https://github.com/InTheta/omni-symphony-canary/issues/327"],
+    threadIds: ["mcp:f15c6851-abd3-41f6-9f90-1ae34ceabb4f"],
+    owner: null,
+  },
+};
+
+it("shows a track's status line and, when opened, why it is stopped and how to unblock it", async () => {
+  const refresh = vi.fn();
+  await using screen = await render(
+    <FleetBoard overview={{ ...overview, tasks: [trackTask] }} onRefresh={refresh} />,
+  );
+  await expect.element(screen.getByText("Waiting on a person")).toBeVisible();
+  await expect.element(screen.getByText(/Waiting on human Will: Approve activation/)).toBeVisible();
+  await screen.getByText("GH-327").click();
+  await expect.element(screen.getByRole("group", { name: "GH-327 status" })).toBeVisible();
+  await expect.element(screen.getByText("What it is doing")).toBeVisible();
+  await expect.element(screen.getByText("Why it is stopped")).toBeVisible();
+  await expect.element(screen.getByText("How to unblock")).toBeVisible();
+  await expect.element(screen.getByText("Deadline 2026-11-22T18:20:00+00:00")).toBeVisible();
+  await screen.getByRole("button", { name: "I did this or granted it" }).click();
+  expect(decideRequest).toHaveBeenCalledWith(requestId, "resolve", expect.anything());
+  expect(refresh).toHaveBeenCalledTimes(1);
 });
 
 it("explains when there is no overview yet", async () => {
