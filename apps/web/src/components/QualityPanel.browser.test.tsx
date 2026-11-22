@@ -2,7 +2,7 @@ import "~/index.css";
 import { expect, it } from "vite-plus/test";
 
 import { render } from "../../test/render";
-import type { Provenance, Quality } from "~/lib/sidecarApi";
+import type { Observed, Provenance, Quality } from "~/lib/sidecarApi";
 import { QualityPanel } from "./QualityPanel";
 
 const run = "11111111-1111-1111-1111-111111111111";
@@ -128,4 +128,75 @@ it("explains when no ledger is connected", async () => {
     <QualityPanel quality={null} trace={null} onRefresh={() => {}} />,
   );
   await expect.element(screen.getByText(/No managed-run ledger is connected/)).toBeVisible();
+});
+
+const observed: Observed = {
+  windowHours: 24,
+  threads: 33,
+  runs: 102,
+  failedRuns: 0,
+  turns: 111,
+  inputTokens: 430_370_582,
+  outputTokens: 1_067_612,
+  cacheHitRate: 0.986,
+  modelRecordedRate: 0.523,
+  models: [
+    {
+      provider: "codex",
+      model: "gpt-fixture",
+      turns: 63,
+      inputTokens: 337_556_735,
+      outputTokens: 900_000,
+      cacheHitRate: 0.989,
+    },
+  ],
+  running: [
+    {
+      provider: "codex",
+      model: "gpt-fixture",
+      effort: "high",
+      runtimeMode: "full-access",
+      ageHours: 7.9,
+      title: null,
+    },
+  ],
+  runtimeModes: [{ mode: "full-access", threads: 33 }],
+  subagentsDifferentVendor: 22,
+  subagentsSameVendor: 10,
+  pullRequests: [
+    {
+      repository: "lab/fixture",
+      number: 7,
+      url: "https://github.com/lab/fixture/pull/7",
+      threads: 1,
+    },
+  ],
+  findings: [
+    {
+      severity: "warn",
+      id: "full-access-running",
+      message: "1 run(s) in progress with full access (no approval prompts).",
+    },
+  ],
+};
+
+it("shows observed activity even when no managed-run ledger is connected", async () => {
+  await using screen = await render(
+    <QualityPanel quality={null} observed={observed} trace={null} onRefresh={() => {}} />,
+  );
+  await expect.element(screen.getByText(/No managed-run ledger is connected/)).toBeVisible();
+  await expect.element(screen.getByText("What your agents actually did")).toBeVisible();
+  await expect.element(screen.getByText(/430\.4M input tokens/)).toBeVisible();
+  await expect.element(screen.getByText(/99% from cache/, { exact: false })).toBeVisible();
+  await expect.element(screen.getByText(/in progress with full access/)).toBeVisible();
+  await expect.element(screen.getByText(/22 on a different vendor/)).toBeVisible();
+  await expect.element(screen.getByRole("link", { name: "lab/fixture#7" })).toBeVisible();
+});
+
+it("shows observed activity beneath the record check", async () => {
+  await using screen = await render(
+    <QualityPanel quality={quality} observed={observed} trace={null} onRefresh={() => {}} />,
+  );
+  await expect.element(screen.getByText("Record check failed")).toBeVisible();
+  await expect.element(screen.getByText("Running now")).toBeVisible();
 });

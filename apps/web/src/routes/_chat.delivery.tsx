@@ -22,6 +22,7 @@ import {
   readInbox,
   readProposals,
   readProvenance,
+  readObserved,
   readQuality,
   readSidecarStatus,
 } from "~/lib/sidecarApi";
@@ -178,6 +179,7 @@ function DeliveryPage() {
     proposals,
     inbox,
     quality,
+    observed,
     provenance,
   } = Route.useLoaderData();
   const waiting = inbox?.items.filter((item) => item.severity === "action").length ?? 0;
@@ -252,6 +254,7 @@ function DeliveryPage() {
         ) : (
           <QualityPanel
             quality={quality}
+            observed={observed}
             trace={provenance}
             onRefresh={() => void router.invalidate()}
           />
@@ -453,6 +456,7 @@ export const Route = createFileRoute("/_chat/delivery")({
     proposals: deps.view === "sidecar" ? await readProposals(abortController.signal) : null,
     inbox: await readInbox(abortController.signal),
     quality: deps.view === "quality" ? await readQuality(abortController.signal) : null,
+    observed: deps.view === "quality" ? await readObserved(abortController.signal) : null,
     provenance:
       deps.view === "quality" && deps.trace
         ? await readProvenance(deps.trace, abortController.signal)
