@@ -579,6 +579,123 @@ export function parseQuality(value: unknown): Quality | null {
   };
 }
 
+export interface ObservedModel {
+  readonly provider: string;
+  readonly model: string;
+  readonly turns: number;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheHitRate: number | null;
+}
+export interface ObservedRunning {
+  readonly provider: string;
+  readonly model: string | null;
+  readonly effort: string | null;
+  readonly runtimeMode: string;
+  readonly ageHours: number | null;
+  readonly title: string | null;
+}
+export interface Observed {
+  readonly windowHours: number;
+  readonly threads: number;
+  readonly runs: number;
+  readonly failedRuns: number;
+  readonly turns: number;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheHitRate: number | null;
+  readonly modelRecordedRate: number | null;
+  readonly models: readonly ObservedModel[];
+  readonly running: readonly ObservedRunning[];
+  readonly runtimeModes: readonly { readonly mode: string; readonly threads: number }[];
+  readonly subagentsDifferentVendor: number;
+  readonly subagentsSameVendor: number;
+  readonly pullRequests: readonly {
+    readonly repository: string;
+    readonly number: number;
+    readonly url: string | null;
+    readonly threads: number;
+  }[];
+  readonly findings: readonly {
+    readonly severity: Level;
+    readonly id: string;
+    readonly message: string;
+  }[];
+}
+
+export function parseObserved(value: unknown): Observed | null {
+  if (!isRecord(value) || value.version !== 1 || value.available !== true) return null;
+  const tokens = isRecord(value.tokens) ? value.tokens : {};
+  const runs = isRecord(value.runs) ? value.runs : {};
+  const byStatus = isRecord(runs.byStatus) ? runs.byStatus : {};
+  const coverage = isRecord(value.modelCoverage) ? value.modelCoverage : {};
+  const subagents = isRecord(value.subagents) ? value.subagents : {};
+  const models: ObservedModel[] = [];
+  for (const row of Array.isArray(value.models) ? value.models : []) {
+    if (!isRecord(row) || typeof row.model !== "string") continue;
+    models.push({
+      provider: str(row.provider) ?? "unknown",
+      model: row.model,
+      turns: count(row.turns),
+      inputTokens: count(row.inputTokens),
+      outputTokens: count(row.outputTokens),
+      cacheHitRate: num(row.cacheHitRate),
+    });
+  }
+  const running: ObservedRunning[] = [];
+  for (const row of Array.isArray(value.running) ? value.running : []) {
+    if (!isRecord(row)) continue;
+    running.push({
+      provider: str(row.provider) ?? "unknown",
+      model: str(row.model),
+      effort: str(row.effort),
+      runtimeMode: str(row.runtimeMode) ?? "unknown",
+      ageHours: num(row.ageHours),
+      title: str(row.title),
+    });
+  }
+  const pullRequests = [];
+  for (const row of Array.isArray(value.pullRequests) ? value.pullRequests : []) {
+    if (!isRecord(row) || typeof row.repository !== "string" || num(row.number) === null) continue;
+    const url = str(row.url);
+    pullRequests.push({
+      repository: row.repository,
+      number: count(row.number),
+      url: url && /^https:\/\/github\.com\//.test(url) ? url : null,
+      threads: count(row.threads),
+    });
+  }
+  const findings: { severity: Level; id: string; message: string }[] = [];
+  for (const entry of Array.isArray(value.findings) ? value.findings : []) {
+    const severity = isRecord(entry) ? level(entry.severity) : null;
+    if (!isRecord(entry) || !severity || typeof entry.message !== "string") continue;
+    findings.push({ severity, id: str(entry.id) ?? "unknown", message: entry.message });
+  }
+  return {
+    windowHours: count(value.windowHours),
+    threads: count(value.threads),
+    runs: count(runs.total),
+    failedRuns: count(byStatus.failed),
+    turns: count(value.turns),
+    inputTokens: count(tokens.inputTokens),
+    outputTokens: count(tokens.outputTokens),
+    cacheHitRate: num(tokens.cacheHitRate),
+    modelRecordedRate: num(coverage.rate),
+    models,
+    running,
+    runtimeModes: isRecord(value.runtimeModes)
+      ? Object.entries(value.runtimeModes).map(([mode, threads]) => ({
+          mode,
+          threads: count(threads),
+        }))
+      : [],
+    subagentsDifferentVendor: count(subagents.differentVendor),
+    subagentsSameVendor: count(subagents.sameVendor),
+    pullRequests,
+    findings,
+  };
+}
+
 function parseOwner(value: unknown): RunOwner | null {
   if (!isRecord(value)) return null;
   const pr = isRecord(value.pr) ? value.pr : {};
@@ -648,6 +765,10 @@ export function parseProvenance(value: unknown): Provenance | null {
 
 export async function readQuality(signal: AbortSignal): Promise<Quality | null> {
   return parseQuality(await readJson("quality", signal));
+}
+
+export async function readObserved(signal: AbortSignal): Promise<Observed | null> {
+  return parseObserved(await readJson("observed", signal));
 }
 
 export async function readProvenance(

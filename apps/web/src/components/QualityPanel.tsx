@@ -1,7 +1,7 @@
 /* oxlint-disable t3code/no-untranslated-copy -- fork-only operator screen, English only */
 import { Link } from "@tanstack/react-router";
 
-import type { Provenance, Quality } from "~/lib/sidecarApi";
+import type { Observed, Provenance, Quality } from "~/lib/sidecarApi";
 
 const levelClass = {
   fail: "border-destructive text-destructive",
@@ -126,21 +126,137 @@ function DecisionTrace({ trace }: { trace: Provenance }) {
   );
 }
 
+function rate(value: number | null): string {
+  return value === null ? "n/a" : `${Math.round(value * 100)}%`;
+}
+
+function tokens(value: number): string {
+  return value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}M` : value.toLocaleString();
+}
+
+function ObservedSection({ observed }: { observed: Observed }) {
+  return (
+    <section className="mt-6" aria-label="Observed activity">
+      <h2 className="font-medium">What your agents actually did</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Last {observed.windowHours} h, read from this T3 server's own records. Nothing is changed
+        and no message text is read.
+      </p>
+      <p className="mt-2 text-sm">
+        {observed.threads} threads · {observed.runs} runs ({observed.failedRuns} failed) ·{" "}
+        {observed.turns} turns · {tokens(observed.inputTokens)} input tokens,{" "}
+        {rate(observed.cacheHitRate)} from cache · model recorded on{" "}
+        {rate(observed.modelRecordedRate)} of turns
+      </p>
+      {observed.findings.length > 0 && (
+        <ul className="mt-2 grid gap-2">
+          {observed.findings.map((finding) => (
+            <li key={`${finding.id}:${finding.message}`} className="rounded-lg border p-3 text-sm">
+              <span
+                className={`mr-2 rounded-full border px-2 py-0.5 text-xs ${levelClass[finding.severity]}`}
+              >
+                {finding.severity}
+              </span>
+              {finding.message}
+            </li>
+          ))}
+        </ul>
+      )}
+      {observed.running.length > 0 && (
+        <>
+          <h3 className="mt-4 text-sm font-medium">Running now</h3>
+          <ul className="mt-1 grid gap-1 text-sm">
+            {observed.running.map((run, index) => (
+              <li key={`${run.provider}:${run.title ?? index}`}>
+                {run.title ? `${run.title} · ` : ""}
+                {run.provider}
+                {run.model ? ` / ${run.model}` : ""}
+                {run.effort ? ` · ${run.effort} effort` : ""} · {run.runtimeMode} ·{" "}
+                {run.ageHours === null ? "age unknown" : `${run.ageHours} h`}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <h3 className="mt-4 text-sm font-medium">Models used</h3>
+      {observed.models.length === 0 ? (
+        <p className="mt-1 text-sm">No turns in this window.</p>
+      ) : (
+        <div className="mt-1 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-muted-foreground">
+              <tr>
+                <th className="py-1 pr-4 font-normal">Provider</th>
+                <th className="py-1 pr-4 font-normal">Model</th>
+                <th className="py-1 pr-4 font-normal">Turns</th>
+                <th className="py-1 pr-4 font-normal">Input</th>
+                <th className="py-1 pr-4 font-normal">From cache</th>
+                <th className="py-1 font-normal">Output</th>
+              </tr>
+            </thead>
+            <tbody>
+              {observed.models.map((row) => (
+                <tr key={`${row.provider}:${row.model}`} className="border-t">
+                  <td className="py-1 pr-4">{row.provider}</td>
+                  <td className="py-1 pr-4">{row.model}</td>
+                  <td className="py-1 pr-4">{row.turns}</td>
+                  <td className="py-1 pr-4">{tokens(row.inputTokens)}</td>
+                  <td className="py-1 pr-4">{rate(row.cacheHitRate)}</td>
+                  <td className="py-1">{tokens(row.outputTokens)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="mt-3 text-sm">
+        Subagents: {observed.subagentsDifferentVendor} on a different vendor from their parent,{" "}
+        {observed.subagentsSameVendor} on the same one. Runtime modes:{" "}
+        {observed.runtimeModes.map((entry) => `${entry.mode} ${entry.threads}`).join(", ") ||
+          "none"}
+        .
+      </p>
+      {observed.pullRequests.length > 0 && (
+        <p className="mt-1 text-sm">
+          Pull requests:{" "}
+          {observed.pullRequests.map((pr, index) => (
+            <span key={`${pr.repository}#${pr.number}`}>
+              {index > 0 ? ", " : ""}
+              {pr.url ? (
+                <a className="underline" href={pr.url} target="_blank" rel="noreferrer">
+                  {pr.repository}#{pr.number}
+                </a>
+              ) : (
+                `${pr.repository}#${pr.number}`
+              )}
+            </span>
+          ))}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function QualityPanel({
   quality,
+  observed = null,
   trace,
   onRefresh,
 }: {
   quality: Quality | null;
+  observed?: Observed | null;
   trace: Provenance | null;
   onRefresh: () => void;
 }) {
   if (quality === null) {
     return (
-      <p className="mt-4 max-w-2xl text-sm" role="status">
-        No managed-run ledger is connected, so there is nothing to check. Start the sidecar HTTP
-        service with --managed-ledger and --managed-workspace, then refresh.
-      </p>
+      <div className="mt-4 max-w-3xl">
+        <p className="max-w-2xl text-sm" role="status">
+          No managed-run ledger is connected, so there is nothing to check. Start the sidecar HTTP
+          service with --managed-ledger and --managed-workspace, then refresh.
+        </p>
+        {observed && <ObservedSection observed={observed} />}
+      </div>
     );
   }
   return (
@@ -198,6 +314,8 @@ export function QualityPanel({
       )}
 
       {trace && <DecisionTrace trace={trace} />}
+
+      {observed && <ObservedSection observed={observed} />}
 
       <h2 className="mt-6 font-medium">Routes so far</h2>
       {quality.rows.length === 0 ? (
