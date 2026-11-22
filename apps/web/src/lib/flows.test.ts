@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildPipelineFlow, buildTaskFlow, type FleetTask } from "./fleetFlow";
+import {
+  buildPipelineFlow,
+  buildTaskFlow,
+  buildTrackFlow,
+  type FleetTask,
+  type FleetWaitingOn,
+} from "./fleetFlow";
 import type { ManagedRun } from "./managedRunDelivery";
 import { buildRunFlow, stageFlowStatus } from "./runFlow";
 import {
@@ -298,6 +304,53 @@ describe("sidecar API parsing", () => {
     expect(parseFleetOverview({ version: 1, summary: {}, tasks: [] })).toBeNull();
   });
 
+  it("keeps a track with its status, who it waits on and the request to decide", () => {
+    const parsed = parseFleetOverview({
+      version: 1,
+      summary: { tasks: 1, pipeline: {} },
+      tasks: [
+        {
+          task: "GH-327",
+          title: "Kafka-free DEV continuation",
+          source: "track",
+          state: "running",
+          phase: "waiting-human",
+          doing: "Reviewing the sealed manifest",
+          statusLine: "Reviewing the sealed manifest. Waiting on human Will: Approve activation",
+          waitingOn: {
+            kind: "human",
+            who: "Will",
+            action: "Approve activation",
+            requestId: "a".repeat(16),
+          },
+          openRequests: [
+            { id: "a".repeat(16), action: "Approve activation", grantor: "Will", deadline: null },
+          ],
+          links: [
+            "https://github.com/InTheta/omni-symphony-canary/issues/327",
+            "http://bad.example",
+          ],
+          threadIds: ["mcp:f15c6851-abd3-41f6-9f90-1ae34ceabb4f"],
+          stale: [],
+        },
+      ],
+    });
+    const track = parsed?.tasks[0]?.track;
+    expect(track?.phase).toBe("waiting-human");
+    expect(track?.waitingOn?.who).toBe("Will");
+    expect(track?.openRequests[0]?.grantor).toBe("Will");
+    expect(track?.links).toEqual(["https://github.com/InTheta/omni-symphony-canary/issues/327"]);
+  });
+
+  it("still refuses a non-track task whose id is not GH-<number>", () => {
+    const parsed = parseFleetOverview({
+      version: 1,
+      summary: { tasks: 1, pipeline: {} },
+      tasks: [{ task: "my-track", state: "running", stale: [] }],
+    });
+    expect(parsed?.tasks).toEqual([]);
+  });
+
   it("sends only changed settings and checks values against the sidecar's limits", () => {
     expect(policyPatch({ a: 1, b: null, c: true }, { a: 1, b: 5, c: true })).toEqual({ b: 5 });
     const days = schema.snapshot_days as never;
@@ -396,5 +449,49 @@ describe("inbox and proposals parsing", () => {
     expect(parsed?.[0]?.items).toHaveLength(1);
     expect(parsed?.[0]?.keptByReason).toEqual({ "claim-held": 2 });
     expect(parseProposals({ version: 1 })).toBeNull();
+  });
+});
+
+describe("buildTrackFlow", () => {
+  const track = (phase: string, waitingOn: FleetWaitingOn | null) =>
+    task({
+      track: {
+        phase,
+        doing: "Reviewing the sealed manifest",
+        statusLine: "",
+        waitingOn,
+        openRequests: [],
+        links: [],
+        threadIds: [],
+        owner: null,
+      },
+    });
+
+  it("shows work, then a person it waits on, and takes that edge", () => {
+    const flow = buildTrackFlow(
+      track("waiting-human", {
+        kind: "human",
+        who: "Will",
+        action: "Approve activation",
+        requestId: null,
+      }),
+    );
+    const wait = flow.nodes.find((node) => node.id === "wait");
+    expect(wait?.status).toBe("waiting");
+    expect(wait?.kind).toBe("decision");
+    expect(wait?.sub).toBe("Will");
+    expect(flow.edges.find((edge) => edge.from === "work")?.taken).toBe(true);
+    expect(flow.nodes.find((node) => node.id === "work")?.sub).toBe(
+      "Reviewing the sealed manifest",
+    );
+  });
+
+  it("is active and unblocked while it runs, and done when finished", () => {
+    const running = buildTrackFlow(track("running", null));
+    expect(running.nodes.find((node) => node.id === "work")?.status).toBe("active");
+    expect(running.nodes.find((node) => node.id === "wait")?.status).toBe("pending");
+    const done = buildTrackFlow(track("done", null));
+    expect(done.nodes.find((node) => node.id === "done")?.status).toBe("done");
+    expect(done.edges.find((edge) => edge.to === "done")?.taken).toBe(true);
   });
 });

@@ -14,6 +14,40 @@ export const FLEET_STATES = [
 ] as const;
 export type FleetState = (typeof FLEET_STATES)[number];
 
+export interface FleetWaitingOn {
+  readonly kind: string;
+  readonly who: string;
+  readonly action: string;
+  readonly requestId: string | null;
+}
+
+export interface FleetRequest {
+  readonly id: string;
+  readonly action: string;
+  readonly grantor: string;
+  readonly deadline: string | null;
+}
+
+/** Work that is run outside Symphony's task files (for example straight from a T3 thread). */
+export interface FleetTrack {
+  readonly phase: string;
+  readonly doing: string | null;
+  readonly statusLine: string;
+  readonly waitingOn: FleetWaitingOn | null;
+  readonly openRequests: readonly FleetRequest[];
+  readonly links: readonly string[];
+  readonly threadIds: readonly string[];
+  readonly owner: string | null;
+}
+
+export const phaseLabels: Record<string, string> = {
+  running: "Working",
+  "waiting-human": "Waiting on a person",
+  "waiting-agent": "Waiting on an agent",
+  blocked: "Blocked",
+  done: "Done",
+};
+
 export interface FleetTask {
   readonly task: string;
   readonly title: string | null;
@@ -44,6 +78,7 @@ export interface FleetTask {
   readonly snapshots: number;
   readonly idleDays: number;
   readonly lastActivity: string | null;
+  readonly track?: FleetTrack | null | undefined;
 }
 
 export interface FleetPipeline {
@@ -193,6 +228,52 @@ export function buildTaskFlow(task: FleetTask): Flow {
       { from: "validate", to: "publish", taken: published },
       { from: "publish", to: "review", taken: published },
       { from: "review", to: "result", taken: merged || closed },
+    ],
+  };
+}
+
+/** A track's journey: it works, it may wait on someone, then it is done. */
+export function buildTrackFlow(task: FleetTask): Flow {
+  const track = task.track;
+  const waiting = track?.waitingOn ?? null;
+  const phase = track?.phase ?? "running";
+  const finished = phase === "done";
+  const nodes: FlowNode[] = [
+    {
+      id: "work",
+      label: "Working",
+      sub: track?.doing ?? "no status given",
+      status: finished ? "done" : waiting === null ? "active" : "done",
+      kind: "step",
+      col: 0,
+      row: 0,
+    },
+    {
+      id: "wait",
+      label: waiting
+        ? `Waiting on ${waiting.kind === "human" ? "a person" : waiting.kind}`
+        : "Not blocked",
+      sub: waiting ? waiting.who : "nothing to wait for",
+      status: waiting ? (phase === "blocked" ? "blocked" : "waiting") : "pending",
+      kind: waiting?.kind === "human" ? "decision" : "step",
+      col: 1,
+      row: 0,
+    },
+    {
+      id: "done",
+      label: "Done",
+      sub: finished ? "finished" : "not yet",
+      status: finished ? "done" : "pending",
+      kind: "step",
+      col: 2,
+      row: 0,
+    },
+  ];
+  return {
+    nodes,
+    edges: [
+      { from: "work", to: "wait", taken: waiting !== null },
+      { from: "wait", to: "done", taken: finished },
     ],
   };
 }

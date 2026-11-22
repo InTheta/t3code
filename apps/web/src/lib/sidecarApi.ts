@@ -1,6 +1,12 @@
 /* oxlint-disable t3code/no-untranslated-copy -- fork-only operator screen, English only */
 import { fetchDeliverySidecar, sendDeliverySidecar } from "~/lib/deliverySidecarFetch";
-import { FLEET_STATES, type FleetPipeline, type FleetState, type FleetTask } from "~/lib/fleetFlow";
+import {
+  FLEET_STATES,
+  type FleetPipeline,
+  type FleetState,
+  type FleetTask,
+  type FleetTrack,
+} from "~/lib/fleetFlow";
 
 export type PolicyValue = number | boolean | null;
 export interface PolicyField {
@@ -157,8 +163,48 @@ export function parseSidecarStatus(value: unknown): SidecarStatus | null {
   };
 }
 
+function parseTrack(value: Record<string, unknown>): FleetTrack | null {
+  if (value.source !== "track") return null;
+  const waiting = isRecord(value.waitingOn) ? value.waitingOn : null;
+  const text = (input: unknown): string[] =>
+    Array.isArray(input) ? input.filter((item): item is string => typeof item === "string") : [];
+  return {
+    phase: str(value.phase) ?? "running",
+    doing: str(value.doing),
+    statusLine: str(value.statusLine) ?? "",
+    waitingOn:
+      waiting && str(waiting.kind) && str(waiting.who) && str(waiting.action)
+        ? {
+            kind: str(waiting.kind) ?? "",
+            who: str(waiting.who) ?? "",
+            action: str(waiting.action) ?? "",
+            requestId: str(waiting.requestId),
+          }
+        : null,
+    openRequests: Array.isArray(value.openRequests)
+      ? value.openRequests.flatMap((request) =>
+          isRecord(request) && str(request.id) && str(request.action) && str(request.grantor)
+            ? [
+                {
+                  id: str(request.id) ?? "",
+                  action: str(request.action) ?? "",
+                  grantor: str(request.grantor) ?? "",
+                  deadline: str(request.deadline),
+                },
+              ]
+            : [],
+        )
+      : [],
+    links: text(value.links).filter((link) => link.startsWith("https://")),
+    threadIds: text(value.threadIds),
+    owner: str(value.owner),
+  };
+}
+
 function parseTask(value: unknown): FleetTask | null {
-  if (!isRecord(value) || typeof value.task !== "string" || !/^GH-[1-9][0-9]*$/.test(value.task))
+  if (!isRecord(value) || typeof value.task !== "string") return null;
+  const track = parseTrack(value);
+  if (!(track ? /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/ : /^GH-[1-9][0-9]*$/).test(value.task))
     return null;
   const state = FLEET_STATES.find((item) => item === value.state);
   if (!state) return null;
@@ -206,6 +252,7 @@ function parseTask(value: unknown): FleetTask | null {
     snapshots: count(value.snapshots),
     idleDays: count(value.idleDays),
     lastActivity: str(value.lastActivity),
+    track,
   };
 }
 
@@ -800,6 +847,15 @@ async function putSidecar(
   } catch {
     return { ok: false, message: "The sidecar could not be reached." };
   }
+}
+
+/** A person says a request an agent raised is done (resolve) or no longer needed (dismiss). */
+export function decideRequest(
+  id: string,
+  decision: "resolve" | "dismiss",
+  signal: AbortSignal,
+): Promise<ActionResult> {
+  return putSidecar(`needs-human/${id}`, { decision }, signal);
 }
 
 export function proposeCleanup(signal: AbortSignal): Promise<ActionResult> {
