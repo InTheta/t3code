@@ -6,12 +6,14 @@ import {
   FLEET_STATES,
   buildPipelineFlow,
   buildTaskFlow,
+  buildTrackFlow,
+  phaseLabels,
   stateLabels,
   staleLabels,
   type FleetState,
   type FleetTask,
 } from "~/lib/fleetFlow";
-import { formatAge, type FleetOverview } from "~/lib/sidecarApi";
+import { decideRequest, formatAge, type FleetOverview } from "~/lib/sidecarApi";
 
 const badge: Record<FleetState, string> = {
   running: "border-info text-info",
@@ -50,6 +52,109 @@ function pullRequestText(task: FleetTask): string {
   if (!pr) return "No pull request";
   const state = pr.state === "open" ? (pr.draft ? "draft" : "open") : pr.state;
   return `#${pr.pr} ${state}`;
+}
+
+function TrackPanel({ task, onRefresh }: { task: FleetTask; onRefresh: () => void }) {
+  const track = task.track;
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (!track) return null;
+  const waiting = track.waitingOn;
+  const decide = async (id: string, decision: "resolve" | "dismiss") => {
+    setBusy(id);
+    setError(null);
+    const result = await decideRequest(id, decision, new AbortController().signal);
+    setBusy(null);
+    if (result.ok) onRefresh();
+    else setError(result.message);
+  };
+  return (
+    <div className="mt-3 grid gap-3">
+      <FlowDiagram flow={buildTrackFlow(task)} label={`${task.task} status`} />
+      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2">
+        <dt className="text-muted-foreground">What it is doing</dt>
+        <dd>{track.doing ?? "No status has been given."}</dd>
+        <dt className="text-muted-foreground">Why it is stopped</dt>
+        <dd>
+          {waiting
+            ? `Waiting on ${waiting.kind === "human" ? "a person" : waiting.kind} (${waiting.who}): ${waiting.action}`
+            : "It is not blocked."}
+        </dd>
+        <dt className="text-muted-foreground">How to unblock</dt>
+        <dd className="grid gap-2">
+          {track.openRequests.length === 0 &&
+            (waiting?.kind === "human"
+              ? "A person is needed, but no request was raised. Ask the agent to raise one."
+              : waiting
+                ? `Nothing for you to do; ${waiting.who} holds this.`
+                : "Nothing is needed.")}
+          {track.openRequests.map((request) => (
+            <div className="rounded-md border p-2" key={request.id}>
+              <p>
+                <strong>{request.grantor}</strong> must: {request.action}
+              </p>
+              {request.deadline && (
+                <p className="text-muted-foreground">Deadline {request.deadline}</p>
+              )}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  className="rounded-md border px-3 py-1 disabled:opacity-50"
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void decide(request.id, "resolve")}
+                >
+                  I did this or granted it
+                </button>
+                <button
+                  className="rounded-md border px-3 py-1 text-muted-foreground disabled:opacity-50"
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void decide(request.id, "dismiss")}
+                >
+                  Not needed
+                </button>
+              </div>
+            </div>
+          ))}
+          {error && (
+            <p className="text-destructive" role="alert">
+              {error}
+            </p>
+          )}
+        </dd>
+        {track.owner && (
+          <>
+            <dt className="text-muted-foreground">Owner</dt>
+            <dd>{track.owner}</dd>
+          </>
+        )}
+        {track.threadIds.length > 0 && (
+          <>
+            <dt className="text-muted-foreground">Thread</dt>
+            <dd className="break-all font-mono">{track.threadIds.join(", ")}</dd>
+          </>
+        )}
+        {track.links.length > 0 && (
+          <>
+            <dt className="text-muted-foreground">Links</dt>
+            <dd className="grid gap-1">
+              {track.links.map((link) => (
+                <a
+                  className="break-all underline"
+                  href={link}
+                  key={link}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {link}
+                </a>
+              ))}
+            </dd>
+          </>
+        )}
+      </dl>
+    </div>
+  );
 }
 
 export function FleetBoard({
@@ -169,7 +274,20 @@ export function FleetBoard({
                     {stateLabels[task.state]}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{task.title ?? "Untitled"}</span>
-                  <span className="text-muted-foreground">{pullRequestText(task)}</span>
+                  {task.track ? (
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-xs ${task.track.waitingOn?.kind === "human" ? "border-warning text-warning" : "border-border text-muted-foreground"}`}
+                    >
+                      {phaseLabels[task.track.phase] ?? task.track.phase}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">{pullRequestText(task)}</span>
+                  )}
+                  {task.track?.statusLine && (
+                    <span className="basis-full text-muted-foreground">
+                      {task.track.statusLine}
+                    </span>
+                  )}
                   {task.stale.map((item) => (
                     <span
                       className="rounded-full border border-warning px-2 py-0.5 text-xs text-warning"
@@ -179,8 +297,15 @@ export function FleetBoard({
                     </span>
                   ))}
                 </summary>
-                <FlowDiagram flow={buildTaskFlow(task)} label={`${task.task} journey`} />
-                <dl className="mt-3 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-1">
+                {task.track ? (
+                  <TrackPanel task={task} onRefresh={onRefresh} />
+                ) : (
+                  <FlowDiagram flow={buildTaskFlow(task)} label={`${task.task} journey`} />
+                )}
+                <dl
+                  hidden={task.track !== null && task.track !== undefined}
+                  className="mt-3 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-1"
+                >
                   <dt className="text-muted-foreground">Repository</dt>
                   <dd>{task.repository ?? "Unknown"}</dd>
                   <dt className="text-muted-foreground">Pull request</dt>
