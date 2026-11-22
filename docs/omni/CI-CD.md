@@ -4,13 +4,13 @@ Goal: the fork stays mergeable with `pingdotgg/t3code`, every change is checked 
 
 ## Where each job runs
 
-| Job | Where | How it is started |
-|---|---|---|
-| Install, format, typecheck, lint, unit and browser tests | **Dell** (`scripts/omni/dell-check.sh <ref>`) | By hand, or `--status` to post one commit status `dell/checks` on the exact commit |
-| Upstream sync | **Dell** user timer `t3code-sync-upstream` (every 6 hours) | Timer; opens an issue and leaves `main` untouched if a merge conflicts |
-| Linux install | **Dell** (`scripts/omni/build-cli-mirror.sh`) | By hand |
-| Windows installer | **GitHub-hosted** `windows-fork-qualification.yml`, on a branch named `qualification/windows-<date><letter>` only | Push the branch (previous qualification branch + merge of `main`, trigger renamed). Never a pull request, never a schedule |
-| macOS installer | Not built. Needs a Mac runner | Parked |
+| Job                                                      | Where                                                                                                             | How it is started                                                                                                          |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Install, format, typecheck, lint, unit and browser tests | **Dell** (`scripts/omni/dell-check.sh <ref>`)                                                                     | By hand, or `--status` to post one commit status `dell/checks` on the exact commit                                         |
+| Upstream sync                                            | **Dell** user timer `t3code-sync-upstream` (every 6 hours)                                                        | Timer; opens an issue and leaves `main` untouched if a merge conflicts                                                     |
+| Linux install                                            | **Dell** (`scripts/omni/build-cli-mirror.sh`)                                                                     | By hand                                                                                                                    |
+| Windows installer                                        | **GitHub-hosted** `windows-fork-qualification.yml`, on a branch named `qualification/windows-<date><letter>` only | Push the branch (previous qualification branch + merge of `main`, trigger renamed). Never a pull request, never a schedule |
+| macOS installer                                          | Not built. Needs a Mac runner                                                                                     | Parked                                                                                                                     |
 
 Upstream's own workflows (`ci.yml`, release, mobile, previews) use paid third-party runners the fork does not have. They are **not edited**. They are switched off in the repository's Actions settings (a setting, not a file change, so syncing is unaffected). `windows-fork-qualification.yml` lives only on qualification branches.
 
