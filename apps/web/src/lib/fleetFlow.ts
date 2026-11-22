@@ -48,6 +48,47 @@ export const phaseLabels: Record<string, string> = {
   done: "Done",
 };
 
+export interface FleetStatuses {
+  readonly task: string;
+  readonly pullRequest: {
+    readonly state: string;
+    readonly draft: boolean;
+    readonly number: number;
+    readonly headSha: string | null;
+    readonly checkedAt: string | null;
+  } | null;
+  readonly ci: {
+    readonly state: string;
+    readonly head: string | null;
+    readonly exactHead: boolean | null;
+  };
+  readonly deployment: {
+    readonly state: string;
+    readonly sha: string | null;
+    readonly environment: string | null;
+  };
+}
+
+export interface FleetScope {
+  readonly repositories: readonly {
+    readonly repository: string;
+    readonly tasks: number;
+    readonly withPullRequest: number;
+    readonly pullRequestUnknown: number;
+  }[];
+  readonly tasksShown: number;
+  readonly tasksOnDisk: number;
+  readonly tasksTruncated: boolean;
+  readonly github: {
+    readonly queriedThisRun: boolean;
+    readonly lastCheckedAt: string | null;
+    readonly oldestOpenCheckAt: string | null;
+    readonly openRefreshSeconds: number;
+    readonly cachedPullRequests: number;
+  };
+  readonly sources: Readonly<Record<string, string>>;
+}
+
 export interface FleetTask {
   readonly task: string;
   readonly title: string | null;
@@ -79,6 +120,7 @@ export interface FleetTask {
   readonly idleDays: number;
   readonly lastActivity: string | null;
   readonly track?: FleetTrack | null | undefined;
+  readonly statuses?: FleetStatuses | null | undefined;
 }
 
 export interface FleetPipeline {

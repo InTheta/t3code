@@ -3,6 +3,8 @@ import { fetchDeliverySidecar, sendDeliverySidecar } from "~/lib/deliverySidecar
 import {
   FLEET_STATES,
   type FleetPipeline,
+  type FleetScope,
+  type FleetStatuses,
   type FleetState,
   type FleetTask,
   type FleetTrack,
@@ -56,6 +58,7 @@ export interface FleetOverview {
     readonly pipeline: FleetPipeline;
     readonly pullRequestStateKnown: boolean;
   };
+  readonly scope: FleetScope | null;
   readonly tasks: readonly FleetTask[];
 }
 
@@ -201,6 +204,67 @@ function parseTrack(value: Record<string, unknown>): FleetTrack | null {
   };
 }
 
+function parseStatuses(value: unknown): FleetStatuses | null {
+  if (!isRecord(value) || !isRecord(value.ci) || !isRecord(value.deployment)) return null;
+  const pr = isRecord(value.pullRequest) ? value.pullRequest : null;
+  return {
+    task: str(value.task) ?? "unknown",
+    pullRequest: pr
+      ? {
+          state: str(pr.state) ?? "unknown",
+          draft: pr.draft === true,
+          number: count(pr.number),
+          headSha: str(pr.headSha),
+          checkedAt: str(pr.checkedAt),
+        }
+      : null,
+    ci: {
+      state: str(value.ci.state) ?? "not-recorded",
+      head: str(value.ci.head),
+      exactHead: typeof value.ci.exactHead === "boolean" ? value.ci.exactHead : null,
+    },
+    deployment: {
+      state: str(value.deployment.state) ?? "not-recorded",
+      sha: str(value.deployment.sha),
+      environment: str(value.deployment.environment),
+    },
+  };
+}
+
+function parseScope(value: unknown): FleetScope | null {
+  if (!isRecord(value) || !isRecord(value.github) || !Array.isArray(value.repositories))
+    return null;
+  const sources: Record<string, string> = {};
+  if (isRecord(value.sources))
+    for (const [key, text] of Object.entries(value.sources))
+      if (typeof text === "string") sources[key] = text;
+  return {
+    repositories: value.repositories.flatMap((item) =>
+      isRecord(item) && typeof item.repository === "string"
+        ? [
+            {
+              repository: item.repository,
+              tasks: count(item.tasks),
+              withPullRequest: count(item.withPullRequest),
+              pullRequestUnknown: count(item.pullRequestUnknown),
+            },
+          ]
+        : [],
+    ),
+    tasksShown: count(value.tasksShown),
+    tasksOnDisk: count(value.tasksOnDisk),
+    tasksTruncated: value.tasksTruncated === true,
+    github: {
+      queriedThisRun: value.github.queriedThisRun === true,
+      lastCheckedAt: str(value.github.lastCheckedAt),
+      oldestOpenCheckAt: str(value.github.oldestOpenCheckAt),
+      openRefreshSeconds: count(value.github.openRefreshSeconds),
+      cachedPullRequests: count(value.github.cachedPullRequests),
+    },
+    sources,
+  };
+}
+
 function parseTask(value: unknown): FleetTask | null {
   if (!isRecord(value) || typeof value.task !== "string") return null;
   const track = parseTrack(value);
@@ -253,6 +317,7 @@ function parseTask(value: unknown): FleetTask | null {
     idleDays: count(value.idleDays),
     lastActivity: str(value.lastActivity),
     track,
+    statuses: parseStatuses(value.statuses),
   };
 }
 
@@ -294,6 +359,7 @@ export function parseFleetOverview(
       },
       pullRequestStateKnown: value.summary.pullRequestStateKnown === true,
     },
+    scope: parseScope(value.scope),
     tasks,
   };
 }
