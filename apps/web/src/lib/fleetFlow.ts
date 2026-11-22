@@ -196,14 +196,3 @@ export function buildTaskFlow(task: FleetTask): Flow {
     ],
   };
 }
-
-export function countBy(
-  tasks: readonly FleetTask[],
-  pick: (task: FleetTask) => readonly string[],
-): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const task of tasks) {
-    for (const key of pick(task)) counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
-}
