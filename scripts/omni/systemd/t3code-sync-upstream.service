@@ -1,0 +1,8 @@
+[Unit]
+Description=Merge pingdotgg/t3code main into InTheta/t3code main (merge commit, gated on typecheck/lint/format)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash %h/services/t3code-sync/t3code-sync-upstream.sh
+TimeoutStartSec=3000
+Nice=10
