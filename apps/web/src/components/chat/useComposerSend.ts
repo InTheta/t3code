@@ -28,7 +28,6 @@ import {
   type PreviewAnnotationPayload,
   type ResponseContextRecord,
   type ScopedThreadRef,
-  type ServerProvider,
   type ThreadContextRecord,
   type ThreadId,
   ProviderInteractionMode,
@@ -66,6 +65,12 @@ import {
 import { type ChatMessage, DEFAULT_INTERACTION_MODE } from "../../types";
 import { recordPromptSent } from "../GitHubStarPrompt";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import {
+  planOnlyOutgoing,
+  planOnlyTurn,
+  rejectPlanOnlySlashCommand,
+  type PlanOnlyDispatch,
+} from "./planOnlyPreset";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
@@ -198,19 +203,6 @@ type LocalDispatchState = ReturnType<typeof useLocalDispatchState>;
 type DraftEnvironmentRouting = ReturnType<typeof useDraftEnvironmentRouting>;
 type UsageLimitsPanel = ReturnType<typeof useUsageLimitsPanel>;
 type TimelineFollow = ReturnType<typeof useTimelineFollow>;
-
-export interface PlanOnlyDispatch {
-  readonly planner: ModelSelection;
-  readonly provider: ServerProvider;
-  readonly confirmedSwitch?: { readonly from: string; readonly to: string };
-  readonly inventoryTarget?:
-    | {
-        providerInstanceId: ModelSelection["instanceId"];
-        model: string;
-        options: ModelSelection["options"];
-      }
-    | undefined;
-}
 
 interface ComposerSendInput {
   readonly environmentId: EnvironmentId;
@@ -446,16 +438,7 @@ export function useComposerSend(input: ComposerSendInput) {
     // What the user pressed send on; uploads below can take a while, and a redirect must not
     // decline approvals for a draft that changed meanwhile.
     let promptAtSend = detachedOverride ? detachedOverride.prompt : promptRef.current;
-    if (planOnly && promptAtSend.trimStart().startsWith("/")) {
-      toastManager.add({
-        type: "warning",
-        // oxlint-disable-next-line t3code/no-untranslated-copy -- fork: plan-only toast, English only
-        title: "Enter a planning brief",
-        // oxlint-disable-next-line t3code/no-untranslated-copy -- fork: plan-only toast, English only
-        description: "Use the regular Send button for slash commands.",
-      });
-      return;
-    }
+    if (rejectPlanOnlySlashCommand(planOnly, promptAtSend)) return;
     if (
       usageLimitsOffered &&
       usageLimitsKey !== null &&
@@ -834,9 +817,15 @@ export function useComposerSend(input: ComposerSendInput) {
       selectedPromptEffort: ctxSelectedPromptEffort,
       selectedModelSelection,
     } = sendCtx;
-    const ctxSelectedModelSelection = planOnly?.planner ?? selectedModelSelection;
-    const interactionMode = planOnly ? "plan" : DEFAULT_INTERACTION_MODE;
-    const turnRuntimeMode = planOnly ? "approval-required" : runtimeMode;
+    const {
+      modelSelection: ctxSelectedModelSelection,
+      interactionMode,
+      runtimeMode: turnRuntimeMode,
+    } = planOnlyTurn(planOnly, {
+      modelSelection: selectedModelSelection,
+      runtimeMode,
+      interactionMode: DEFAULT_INTERACTION_MODE,
+    });
     const { images: composerImages, previewAnnotations: composerPreviewAnnotations } =
       mergeDirectPreviewAnnotation({
         images: sendContextImages,
@@ -1085,32 +1074,15 @@ export function useComposerSend(input: ComposerSendInput) {
     );
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
-    const outgoingMessageText = formatOutgoingPrompt({
-      provider: planOnly?.provider.driver ?? ctxSelectedProvider,
-      model: planOnly?.planner.model ?? ctxSelectedModel,
-      models: planOnly?.provider.models ?? ctxSelectedProviderModels,
-      effort: planOnly
-        ? String(
-            planOnly.planner.options?.find(
-              (entry) => entry.id === "reasoningEffort" || entry.id === "effort",
-            )?.value ?? "",
-          ) || null
-        : ctxSelectedPromptEffort,
-      text: planOnly
-        ? [
-            messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
-            ...(planOnly.confirmedSwitch
-              ? [
-                  `Quota switch approved for this turn: ${planOnly.confirmedSwitch.from} → ${planOnly.confirmedSwitch.to}.`,
-                ]
-              : []),
-            "Plan only. Do not edit files, commit, deploy, or start implementation. Return scopes, owners, acceptance tests and a rollback plan, then stop for approval.",
-            planOnly.inventoryTarget
-              ? `If inventory is needed, delegate it in Plan mode with role research to this exact target: ${JSON.stringify(planOnly.inventoryTarget)}. If it cannot launch, report the reason and do inventory yourself. Do not substitute a model or account.`
-              : "Do inventory yourself. No delegated target was selected.",
-          ].join("\n\n")
-        : messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
-    });
+    const outgoingMessageText = formatOutgoingPrompt(
+      planOnlyOutgoing(planOnly, {
+        provider: ctxSelectedProvider,
+        model: ctxSelectedModel,
+        models: ctxSelectedProviderModels,
+        effort: ctxSelectedPromptEffort,
+        text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
+      }),
+    );
     if (
       isCurrentRouteThread() &&
       composerRef.current?.validateProviderInput(outgoingMessageText) === false

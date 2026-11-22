@@ -1,6 +1,21 @@
+/* oxlint-disable t3code/no-untranslated-copy -- fork: plan-only copy, English only */
 import type { ModelSelection, ServerProvider } from "@t3tools/contracts";
 import { planningQuota, lowEffortInventoryTargets } from "@t3tools/shared/planningQuota";
-import type { PlanOnlyDispatch } from "./useComposerSend";
+import { toastManager } from "../ui/toast";
+import type { formatOutgoingPrompt } from "../ChatView.logic";
+
+export interface PlanOnlyDispatch {
+  readonly planner: ModelSelection;
+  readonly provider: ServerProvider;
+  readonly confirmedSwitch?: { readonly from: string; readonly to: string };
+  readonly inventoryTarget?:
+    | {
+        providerInstanceId: ModelSelection["instanceId"];
+        model: string;
+        options: ModelSelection["options"];
+      }
+    | undefined;
+}
 
 type LimitedQuota = Extract<ReturnType<typeof planningQuota>, { kind: "limited" }>;
 
@@ -120,4 +135,64 @@ export function planOnlyProposal(
     };
   }
   return { dispatch };
+}
+
+/** True, after telling the user, when a plan-only send cannot go ahead because the draft is a slash command. */
+export function rejectPlanOnlySlashCommand(
+  planOnly: PlanOnlyDispatch | undefined,
+  prompt: string,
+): boolean {
+  if (!planOnly || !prompt.trimStart().startsWith("/")) return false;
+  toastManager.add({
+    type: "warning",
+    title: "Enter a planning brief",
+    description: "Use the regular Send button for slash commands.",
+  });
+  return true;
+}
+
+/** Model, runtime and interaction mode for a turn: a plan-only turn plans with the chosen planner and asks for approval. */
+export function planOnlyTurn<R, I>(
+  planOnly: PlanOnlyDispatch | undefined,
+  base: { modelSelection: ModelSelection; runtimeMode: R; interactionMode: I },
+) {
+  if (!planOnly) return base;
+  return {
+    modelSelection: planOnly.planner,
+    runtimeMode: "approval-required" as const,
+    interactionMode: "plan" as const,
+  };
+}
+
+type OutgoingPromptParams = Parameters<typeof formatOutgoingPrompt>[0];
+
+/** The outgoing prompt for a turn: plan-only turns add the planning brief and inventory delegation. */
+export function planOnlyOutgoing(
+  planOnly: PlanOnlyDispatch | undefined,
+  base: OutgoingPromptParams,
+): OutgoingPromptParams {
+  if (!planOnly) return base;
+  return {
+    provider: planOnly.provider.driver,
+    model: planOnly.planner.model,
+    models: planOnly.provider.models,
+    effort:
+      String(
+        planOnly.planner.options?.find(
+          (entry) => entry.id === "reasoningEffort" || entry.id === "effort",
+        )?.value ?? "",
+      ) || null,
+    text: [
+      base.text,
+      ...(planOnly.confirmedSwitch
+        ? [
+            `Quota switch approved for this turn: ${planOnly.confirmedSwitch.from} → ${planOnly.confirmedSwitch.to}.`,
+          ]
+        : []),
+      "Plan only. Do not edit files, commit, deploy, or start implementation. Return scopes, owners, acceptance tests and a rollback plan, then stop for approval.",
+      planOnly.inventoryTarget
+        ? `If inventory is needed, delegate it in Plan mode with role research to this exact target: ${JSON.stringify(planOnly.inventoryTarget)}. If it cannot launch, report the reason and do inventory yourself. Do not substitute a model or account.`
+        : "Do inventory yourself. No delegated target was selected.",
+    ].join("\n\n"),
+  };
 }

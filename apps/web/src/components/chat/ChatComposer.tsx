@@ -1,4 +1,3 @@
-import { parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
 import { copySnapshot } from "./copySnapshot";
 import { VoiceInputSetup } from "./VoiceInputSetup";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
@@ -253,8 +252,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { assistantCitationLabel } from "@t3tools/shared/assistantCitations";
 import { assistantCitationNavigation } from "../../lib/assistantCitationNavigation";
 import { Button } from "../ui/button";
-import { planOnlyProposal, type PlanOnlyProposal } from "./planOnlyPreset";
-import type { PlanOnlyDispatch } from "./useComposerSend";
+import {
+  DeliveryLinkButton,
+  PlanOnlyButton,
+  PlanOnlyWarning,
+  usePlanOnly,
+} from "./planOnlyComposer";
+import type { PlanOnlyDispatch } from "./planOnlyPreset";
 import { Spinner } from "../ui/spinner";
 import { useManagedPolicy } from "../../state/managedPolicy";
 import { hasProviderSetup } from "./ProviderStatusBanner";
@@ -1017,72 +1021,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedModelOptionsForDispatch,
   );
   const selectedModelForPicker = selectedModel;
-  const [planDecision, setPlanDecision] = useState<{
-    owner: string;
-    prompt: string;
-    proposal: PlanOnlyProposal;
-    declined?: boolean;
-  } | null>(null);
-  const canPlanOnly =
-    canOperateThread &&
-    (selectedProvider === "codex" || selectedProvider === "claudeAgent") &&
-    phase !== "running" &&
-    phase !== "connecting" &&
-    !isSendBusy &&
-    !isPreparingWorktree &&
-    environmentUnavailable === null &&
-    pendingUserInputs.length === 0 &&
-    pendingApprovals.length === 0 &&
-    multipleModelSelections === null &&
-    editingQueuedAttachments === null;
-  const proposalForCurrentDraft = () =>
-    planOnlyProposal(
-      providerStatuses.filter((provider) =>
-        providerInstanceEntries.some(
-          (entry) => entry.instanceId === provider.instanceId && entry.enabled && entry.isAvailable,
-        ),
-      ),
-      selectedModelSelection,
-      routeKind === "draft",
-      props.getModelDisabledReason,
-      Date.now(),
-    );
-  const proposePlan = (approved = false) => {
-    if (!canPlanOnly || !promptRef.current.trim() || speechInput.state.phase !== "idle") return;
-    const proposal = proposalForCurrentDraft();
-    const reviewed =
-      planDecision?.owner === composerDraftTargetKey &&
-      planDecision.prompt === promptRef.current &&
-      !planDecision.declined &&
-      JSON.stringify(planDecision.proposal.warning) === JSON.stringify(proposal.warning) &&
-      JSON.stringify(planDecision.proposal.dispatch?.planner) ===
-        JSON.stringify(proposal.dispatch?.planner) &&
-      JSON.stringify(planDecision.proposal.dispatch?.inventoryTarget) ===
-        JSON.stringify(proposal.dispatch?.inventoryTarget);
-    if (approved && !reviewed) {
-      setPlanDecision(
-        proposal.warning
-          ? { owner: composerDraftTargetKey, prompt: promptRef.current, proposal }
-          : null,
-      );
-      return;
-    }
-    if (proposal.warning) {
-      if (!approved) {
-        setPlanDecision({ owner: composerDraftTargetKey, prompt: promptRef.current, proposal });
-        return;
-      }
-    }
-    if (!proposal.dispatch) return;
-    setPlanDecision(null);
-    const replacement = proposal.warning?.replacement;
-    submitComposer(undefined, "auto", "foreground", {
-      ...proposal.dispatch,
-      ...(replacement && proposal.warning
-        ? { confirmedSwitch: { from: proposal.warning.current, to: replacement } }
-        : {}),
-    });
-  };
+  const plan = usePlanOnly({
+    canOperateThread,
+    selectedProvider,
+    phase,
+    isSendBusy,
+    isPreparingWorktree,
+    environmentUnavailable,
+    noPendingUserInputs: pendingUserInputs.length === 0,
+    noPendingApprovals: pendingApprovals.length === 0,
+    multipleModelSelections,
+    editingQueuedAttachments,
+    getPrompt: () => promptRef.current,
+    speechIdle: () => speechInput.state.phase === "idle",
+    draftOwner: composerDraftTargetKey,
+    providers: providerStatuses,
+    instanceEntries: providerInstanceEntries,
+    selectedModelSelection,
+    allowAccountSwitch: routeKind === "draft",
+    getModelDisabledReason: props.getModelDisabledReason,
+    submit: (planOnly) => submitComposer(undefined, "auto", "foreground", { planOnly }),
+  });
   const modelOptionsByInstance = new Map<ProviderInstanceId, ReadonlyArray<AppModelOption>>();
   for (const entry of providerInstanceEntries) {
     modelOptionsByInstance.set(
@@ -2303,8 +2262,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     event?: { preventDefault: () => void },
     dispatchMode?: ComposerDispatchMode,
     submissionIntent?: ComposerSubmissionIntent,
-    planOnly?: PlanOnlyDispatch,
-    options?: { readonly afterDictation?: boolean },
+    options?: { readonly afterDictation?: boolean; readonly planOnly?: PlanOnlyDispatch },
   ) => {
     if (voiceInputActive && !options?.afterDictation) {
       event?.preventDefault();
@@ -2423,7 +2381,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           submissionIntent,
           undefined,
           undefined,
-          planOnly,
+          options?.planOnly,
         );
         return !providerInputRejectedRef.current;
       },
@@ -2440,7 +2398,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes the committed submission handler to the asynchronous dictation completion
   useLayoutEffect(() => {
     submitComposerRef.current = (mode, intent, options) =>
-      submitComposerStable(undefined, mode, intent, undefined, options);
+      submitComposerStable(undefined, mode, intent, options);
   }, [submitComposerStable]);
   useDictationSubmissionShortcut({
     enabled: voiceInputActive && !speechInput.preparing,
@@ -3894,22 +3852,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
               {composerAttachmentFileList}
 
-              {/* oxlint-disable t3code/no-untranslated-copy -- fork: Delivery entry point, English only */}
-              {pendingUserInputs.length === 0 &&
-                !isComposerApprovalState &&
-                prompt.trim().startsWith("https://github.com/") &&
-                parseDeliveryPullRequestUrl(prompt) && (
-                  <button
-                    className="mx-2 rounded-md border px-3 py-1 text-sm"
-                    type="button"
-                    onClick={() =>
-                      void navigate({ to: "/delivery", search: { pr: prompt.trim() } })
-                    }
-                  >
-                    Open Delivery
-                  </button>
-                )}
-              {/* oxlint-enable t3code/no-untranslated-copy */}
+              <DeliveryLinkButton
+                prompt={prompt}
+                enabled={pendingUserInputs.length === 0 && !isComposerApprovalState}
+              />
 
               <div
                 className={cn(
@@ -4051,47 +3997,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </div>
             ) : null}
 
-            {/* oxlint-disable t3code/no-untranslated-copy -- fork: plan-only quota switch copy, English only */}
-            {planDecision?.owner === composerDraftTargetKey && planDecision.proposal.warning ? (
-              <div role="status" className="mx-3 mb-2 space-y-2 rounded-md border p-2 text-sm">
-                <p>
-                  {planDecision.proposal.warning.current} ·{" "}
-                  {planDecision.proposal.warning.quota.label}
-                  {planDecision.proposal.warning.quota.usedPercent !== null
-                    ? ` · ${planDecision.proposal.warning.quota.usedPercent}% used`
-                    : ""}
-                  {planDecision.proposal.warning.quota.resetsAt
-                    ? ` · resets ${new Date(planDecision.proposal.warning.quota.resetsAt).toLocaleString()}`
-                    : ""}
-                </p>
-                {planDecision.declined ? (
-                  <p>Switch declined. Draft kept.</p>
-                ) : planDecision.proposal.warning.replacement ? (
-                  <>
-                    <p>Use {planDecision.proposal.warning.replacement} for this plan?</p>
-                    <div className="flex gap-2">
-                      <Button type="button" size="sm" onClick={() => proposePlan(true)}>
-                        Approve switch and plan
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setPlanDecision({ ...planDecision, declined: true })}
-                      >
-                        Decline switch
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <p>
-                    No eligible replacement with current quota data. Choose another model or wait
-                    for reset.
-                  </p>
-                )}
-              </div>
-            ) : null}
-            {/* oxlint-enable t3code/no-untranslated-copy */}
+            <PlanOnlyWarning plan={plan} draftOwner={composerDraftTargetKey} />
             {isComposerCollapsedMobile && speechInput.state.phase === "idle" ? null : (
               <div
                 data-chat-composer-footer="true"
@@ -4106,19 +4012,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 {composerAttachButton && !dictationTakesFooter ? (
                   <div className="me-2">{composerAttachButton}</div>
                 ) : null}
-                {/* oxlint-disable t3code/no-untranslated-copy -- fork: Plan only control, English only */}
-                {canPlanOnly ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => proposePlan()}
-                    title="Use a stronger planner when available and delegate read-only inventory to a lighter model"
-                  >
-                    Plan only
-                  </Button>
-                ) : null}
-                {/* oxlint-enable t3code/no-untranslated-copy */}
+                <PlanOnlyButton plan={plan} />
                 <div
                   data-chat-composer-actions="right"
                   data-chat-composer-transition-actions="true"
