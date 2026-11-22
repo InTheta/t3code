@@ -28,6 +28,78 @@ const badge: Record<FleetState, string> = {
 };
 const PAGE = 60;
 
+function ageOf(stamp: string | null): string {
+  if (!stamp) return "never";
+  const time = Date.parse(stamp);
+  return Number.isNaN(time)
+    ? "unknown"
+    : formatAge(Math.max(0, Math.round((Date.now() - time) / 1000)));
+}
+
+function ciText(statuses: NonNullable<FleetTask["statuses"]>): string {
+  const ci = statuses.ci;
+  if (ci.state === "not-recorded") return "Not recorded for this task";
+  const head = ci.head ? ` on ${ci.head.slice(0, 10)}` : "";
+  if (ci.exactHead === true) return `${ci.state}${head} (matches the PR head)`;
+  if (ci.exactHead === false) return `${ci.state}${head} (NOT the PR head, so it does not count)`;
+  return `${ci.state}${head} (head match unknown)`;
+}
+
+function ScopePanel({ overview }: { overview: FleetOverview }) {
+  const scope = overview.scope;
+  if (!scope) {
+    return (
+      <p className="text-sm text-muted-foreground" role="status">
+        This snapshot does not say which repositories it covers or when GitHub was checked. Refresh
+        the sidecar to get a newer one.
+      </p>
+    );
+  }
+  const github = scope.github;
+  return (
+    <details className="rounded-lg border p-3 text-sm" open>
+      <summary className="cursor-pointer font-medium">
+        Scope and freshness · {scope.repositories.length} repositories · GitHub checked{" "}
+        {github.lastCheckedAt ? ageOf(github.lastCheckedAt) : "never"}
+      </summary>
+      <dl className="mt-3 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-1">
+        <dt className="text-muted-foreground">Snapshot built</dt>
+        <dd>{overview.generatedAt || "Unknown"}</dd>
+        <dt className="text-muted-foreground">Tasks covered</dt>
+        <dd>
+          {scope.tasksShown.toLocaleString()} of {scope.tasksOnDisk.toLocaleString()} on disk
+          {scope.tasksTruncated && " (the list is cut off; older tasks are not shown)"}
+        </dd>
+        <dt className="text-muted-foreground">GitHub last checked</dt>
+        <dd>
+          {github.lastCheckedAt
+            ? `${github.lastCheckedAt} (${ageOf(github.lastCheckedAt)})`
+            : "Never; pull request states are unknown"}
+          {github.oldestOpenCheckAt &&
+            ` · oldest open pull request check ${ageOf(github.oldestOpenCheckAt)}`}
+          {!github.queriedThisRun && " · not queried on the latest run"}
+        </dd>
+        <dt className="text-muted-foreground">Not covered</dt>
+        <dd>
+          CI is only what the task receipt recorded and deployment is{" "}
+          {scope.sources.deployment ?? "not recorded"}; neither is read live from GitHub or the
+          hosts.
+        </dd>
+        <dt className="text-muted-foreground">Repositories</dt>
+        <dd className="grid gap-1">
+          {scope.repositories.map((item) => (
+            <span key={item.repository}>
+              <span className="font-mono">{item.repository}</span> · {item.tasks.toLocaleString()}{" "}
+              tasks · {item.withPullRequest.toLocaleString()} with a pull request
+              {item.pullRequestUnknown > 0 && ` (${item.pullRequestUnknown} state unknown)`}
+            </span>
+          ))}
+        </dd>
+      </dl>
+    </details>
+  );
+}
+
 function matches(
   task: FleetTask,
   states: ReadonlySet<string>,
@@ -202,6 +274,8 @@ export function FleetBoard({
         </button>
       </div>
 
+      <ScopePanel overview={overview} />
+
       <FlowDiagram
         flow={buildPipelineFlow(overview.summary.pipeline)}
         label="Where tasks are in the pipeline"
@@ -308,6 +382,26 @@ export function FleetBoard({
                 >
                   <dt className="text-muted-foreground">Repository</dt>
                   <dd>{task.repository ?? "Unknown"}</dd>
+                  {task.statuses && (
+                    <>
+                      <dt className="text-muted-foreground">Task status</dt>
+                      <dd>{stateLabels[task.state]}</dd>
+                      <dt className="text-muted-foreground">PR status</dt>
+                      <dd>
+                        {task.statuses.pullRequest
+                          ? `${pullRequestText(task)} · checked ${ageOf(task.statuses.pullRequest.checkedAt)}`
+                          : "No pull request"}
+                      </dd>
+                      <dt className="text-muted-foreground">Exact-head CI</dt>
+                      <dd>{ciText(task.statuses)}</dd>
+                      <dt className="text-muted-foreground">Deployment</dt>
+                      <dd>
+                        {task.statuses.deployment.state === "not-recorded"
+                          ? "Not recorded for this task"
+                          : `${task.statuses.deployment.state}${task.statuses.deployment.environment ? ` in ${task.statuses.deployment.environment}` : ""}${task.statuses.deployment.sha ? ` at ${task.statuses.deployment.sha.slice(0, 10)}` : ""}`}
+                      </dd>
+                    </>
+                  )}
                   <dt className="text-muted-foreground">Pull request</dt>
                   <dd>
                     {task.publication?.url ? (

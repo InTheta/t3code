@@ -135,6 +135,7 @@ const overview: FleetOverview = {
     pipeline: { planned: 3, validated: 2, published: 2, inReview: 1, merged: 1, closed: 0 },
     pullRequestStateKnown: true,
   },
+  scope: null,
   tasks: [
     task("GH-1", {
       state: "merged",
@@ -238,6 +239,68 @@ it("shows a track's status line and, when opened, why it is stopped and how to u
   await screen.getByRole("button", { name: "I did this or granted it" }).click();
   expect(decideRequest).toHaveBeenCalledWith(requestId, "resolve", expect.anything());
   expect(refresh).toHaveBeenCalledTimes(1);
+});
+
+const scopedOverview: FleetOverview = {
+  ...overview,
+  scope: {
+    repositories: [
+      { repository: "InTheta/demo", tasks: 2, withPullRequest: 1, pullRequestUnknown: 0 },
+      { repository: "InTheta/other", tasks: 1, withPullRequest: 0, pullRequestUnknown: 0 },
+    ],
+    tasksShown: 3,
+    tasksOnDisk: 3,
+    tasksTruncated: false,
+    github: {
+      queriedThisRun: true,
+      lastCheckedAt: "2026-11-20T09:50:00+00:00",
+      oldestOpenCheckAt: "2026-11-20T09:50:00+00:00",
+      openRefreshSeconds: 3600,
+      cachedPullRequests: 2,
+    },
+    sources: { deployment: "not recorded by this report" },
+  },
+  tasks: [
+    task("GH-2", {
+      state: "in-review",
+      publication: publication("open", 12),
+      statuses: {
+        task: "in-review",
+        pullRequest: {
+          state: "open",
+          draft: false,
+          number: 12,
+          headSha: sha,
+          checkedAt: "2026-11-20T09:50:00+00:00",
+        },
+        ci: { state: "success", head: "b".repeat(40), exactHead: false },
+        deployment: { state: "not-recorded", sha: null, environment: null },
+      },
+    }),
+  ],
+};
+
+it("shows which repositories the snapshot covers and when GitHub was last checked", async () => {
+  await using screen = await render(<FleetBoard overview={scopedOverview} onRefresh={() => {}} />);
+  await expect.element(screen.getByText(/Scope and freshness · 2 repositories/)).toBeVisible();
+  await expect.element(screen.getByText("InTheta/other")).toBeVisible();
+  await expect
+    .element(screen.getByText("Never; pull request states are unknown"))
+    .not.toBeInTheDocument();
+});
+
+it("keeps task, pull request, exact-head CI and deployment status separate", async () => {
+  await using screen = await render(<FleetBoard overview={scopedOverview} onRefresh={() => {}} />);
+  await screen.getByText("GH-2").click();
+  await expect.element(screen.getByText("Task status")).toBeVisible();
+  await expect.element(screen.getByText("PR status")).toBeVisible();
+  await expect.element(screen.getByText(/NOT the PR head, so it does not count/)).toBeVisible();
+  await expect.element(screen.getByText("Not recorded for this task")).toBeVisible();
+});
+
+it("says plainly when the snapshot has no scope information", async () => {
+  await using screen = await render(<FleetBoard overview={overview} onRefresh={() => {}} />);
+  await expect.element(screen.getByText(/does not say which repositories it covers/)).toBeVisible();
 });
 
 it("explains when there is no overview yet", async () => {
