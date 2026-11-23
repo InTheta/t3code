@@ -28,12 +28,31 @@ STAMP=$(date +%Y%m%d-%H%M); BR=sync/upstream-$STAMP; WT=$ROOT/t3code-sync-$STAMP
 git worktree add -q -b "$BR" "$WT" origin/main || finish error "worktree failed" 2
 cd "$WT"
 BUDGET=apps/server/src/provider/agentContextBudget.json
+ROUTES=apps/web/src/routeTree.gen.ts
 if ! "${G[@]}" merge --no-ff --no-commit upstream/main >/dev/null 2>&1; then
   FILES=$(git diff --name-only --diff-filter=U | tr '\n' ' ' | sed 's/ $//')
-  if [ "$FILES" = "$BUDGET" ]; then
+  # Both of these are generated files that upstream and the fork edit; they are regenerated, never merged by hand.
+  GENERATED_ONLY=1; for f in $FILES; do [ "$f" = "$BUDGET" ] || [ "$f" = "$ROUTES" ] || GENERATED_ONLY=0; done
+  if [ -n "$FILES" ] && [ "$GENERATED_ONLY" = 1 ]; then
+    . "$SRC/env.sh"; export PATH="$WT/node_modules/.bin:$PATH"
+    if echo "$FILES" | grep -q "$ROUTES"; then
+      # Take upstream's tree, install, then regenerate it from the route files so it holds upstream's routes and ours.
+      git checkout --theirs "$ROUTES" && git add "$ROUTES"
+      vp i >"$STATE/install.log" 2>&1 || finish failed "install failed while regenerating the route tree (branch $BR kept)" 1
+      GEN=$(ls -d "$WT"/node_modules/.pnpm/@tanstack+router-generator@*/node_modules/@tanstack/router-generator 2>/dev/null | head -n 1)
+      [ -n "$GEN" ] || finish failed "router generator not found (branch $BR kept)" 1
+      (cd apps/web && cat > gen-tmp.mjs <<JS
+import { Generator, getConfig } from "$GEN/dist/esm/index.js";
+const root = process.cwd();
+const config = getConfig({ routesDirectory: "./src/routes", generatedRouteTree: "./src/routeTree.gen.ts", autoCodeSplitting: true }, root);
+await new Generator({ config, root }).run();
+JS
+        node gen-tmp.mjs >"$STATE/routes.log" 2>&1; rc=$?; rm -f gen-tmp.mjs; exit $rc) || finish failed "route tree regeneration failed (branch $BR kept)" 1
+      git add "$ROUTES"
+    fi
+    if echo "$FILES" | grep -q "$BUDGET"; then
     # Generated size file that both sides edit: take upstream's, then set it to the value its own test measures.
     git checkout --theirs "$BUDGET" && git add "$BUDGET"
-    . "$SRC/env.sh"; export PATH="$WT/node_modules/.bin:$PATH"
     vp i >"$STATE/install.log" 2>&1 || finish failed "install failed while resolving the budget file (branch $BR kept)" 1
     # Use the task runner (vpr): right after an install, plain `vp test run` reports "no tests" (vitest cannot find its suite) until a task-runner run has happened.
     # The first cold vitest run sometimes reports "no tests"; retry until a run actually executes the suite.
@@ -55,6 +74,7 @@ json.dump(budget, open(path, "w"), indent=2); open(path, "a").write("\n")
 PY
     git add "$BUDGET"
     (cd apps/server && vpr test src/provider/AgentContextBudget.test.ts >"$STATE/budget2.log" 2>&1) || finish failed "budget file still wrong after regenerating (branch $BR kept)" 1
+    fi
   elif [ -z "$(git rerere remaining 2>/dev/null)" ] && [ -n "$(git rerere status 2>/dev/null)" ]; then
     # Every conflicted file was resolved by a recorded earlier resolution: stage them and carry on to the gates.
     git add -A
