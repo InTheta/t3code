@@ -40,7 +40,9 @@ function ciText(statuses: NonNullable<FleetTask["statuses"]>): string {
   const ci = statuses.ci;
   if (ci.state === "not-recorded") return "Not recorded for this task";
   const head = ci.head ? ` on ${ci.head.slice(0, 10)}` : "";
-  if (ci.exactHead === true) return `${ci.state}${head} (matches the PR head)`;
+  const by = ci.source === "sidecar-checks" ? `, run by the sidecar ${ageOf(ci.checkedAt)}` : "";
+  const failed = ci.failedSteps.length > 0 ? `; failed: ${ci.failedSteps.join(", ")}` : "";
+  if (ci.exactHead === true) return `${ci.state}${head} (matches the PR head${by})${failed}`;
   if (ci.exactHead === false) return `${ci.state}${head} (NOT the PR head, so it does not count)`;
   return `${ci.state}${head} (head match unknown)`;
 }
