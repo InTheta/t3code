@@ -2,7 +2,7 @@ name: Windows fork qualification
 
 on:
   push:
-    branches: [qualification/windows-20261122f]
+    branches: [qualification/windows-20261123a]
 
 permissions:
   contents: read
