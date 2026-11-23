@@ -106,6 +106,32 @@ it("shows a failed record check with the finding, the route table and the sugges
   await expect.element(screen.getByText(/No route has 5 stages yet/)).toBeVisible();
 });
 
+it("says plainly that nothing has been checked when there are no managed runs", async () => {
+  await using screen = await render(
+    <QualityPanel
+      quality={{
+        ...quality,
+        runs: 0,
+        decisions: 0,
+        coverage: null,
+        counts: { fail: 0, warn: 0, info: 0 },
+        passed: true,
+        findings: [],
+        rows: [],
+        suggestions: [],
+      }}
+      trace={null}
+      observed={null}
+      onRefresh={() => {}}
+    />,
+  );
+  await expect.element(screen.getByText("No managed runs yet")).toBeVisible();
+  await expect
+    .element(screen.getByText(/Nothing has been checked because no managed run/))
+    .toBeVisible();
+  await expect.element(screen.getByText("Record check passed")).not.toBeInTheDocument();
+});
+
 it("follows a decision back to who made it, the worker and the model", async () => {
   await using screen = await render(
     <QualityPanel quality={quality} trace={trace} onRefresh={() => {}} />,
