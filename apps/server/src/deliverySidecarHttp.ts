@@ -135,7 +135,7 @@ const writeSidecar = Effect.gen(function* () {
     Effect.timeout("15 seconds"),
     Effect.option,
   );
-  if (Option.isNone(response) || ![200, 400].includes(response.value.status)) {
+  if (Option.isNone(response) || ![200, 400, 404].includes(response.value.status)) {
     return HttpServerResponse.empty({ status: 502, headers });
   }
   return HttpServerResponse.text(response.value.text, {
