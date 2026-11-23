@@ -222,6 +222,11 @@ function parseStatuses(value: unknown): FleetStatuses | null {
       state: str(value.ci.state) ?? "not-recorded",
       head: str(value.ci.head),
       exactHead: typeof value.ci.exactHead === "boolean" ? value.ci.exactHead : null,
+      checkedAt: str(value.ci.checkedAt),
+      source: str(value.ci.source),
+      failedSteps: Array.isArray(value.ci.failedSteps)
+        ? value.ci.failedSteps.filter((step): step is string => typeof step === "string")
+        : [],
     },
     deployment: {
       state: str(value.deployment.state) ?? "not-recorded",

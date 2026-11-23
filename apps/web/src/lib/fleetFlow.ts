@@ -61,6 +61,9 @@ export interface FleetStatuses {
     readonly state: string;
     readonly head: string | null;
     readonly exactHead: boolean | null;
+    readonly checkedAt: string | null;
+    readonly source: string | null;
+    readonly failedSteps: readonly string[];
   };
   readonly deployment: {
     readonly state: string;

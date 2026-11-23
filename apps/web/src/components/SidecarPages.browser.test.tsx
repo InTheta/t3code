@@ -273,7 +273,14 @@ const scopedOverview: FleetOverview = {
           headSha: sha,
           checkedAt: "2026-11-20T09:50:00+00:00",
         },
-        ci: { state: "success", head: "b".repeat(40), exactHead: false },
+        ci: {
+          state: "success",
+          head: "b".repeat(40),
+          exactHead: false,
+          checkedAt: null,
+          source: "receipt",
+          failedSteps: [],
+        },
         deployment: { state: "not-recorded", sha: null, environment: null },
       },
     }),
@@ -296,6 +303,33 @@ it("keeps task, pull request, exact-head CI and deployment status separate", asy
   await expect.element(screen.getByText("PR status")).toBeVisible();
   await expect.element(screen.getByText(/NOT the PR head, so it does not count/)).toBeVisible();
   await expect.element(screen.getByText("Not recorded for this task")).toBeVisible();
+});
+
+it("shows a failed sidecar check on the current head with the failed steps", async () => {
+  const base = scopedOverview.tasks[0]!;
+  const failing: FleetOverview = {
+    ...scopedOverview,
+    tasks: [
+      {
+        ...base,
+        statuses: {
+          ...base.statuses!,
+          ci: {
+            state: "failure",
+            head: sha,
+            exactHead: true,
+            checkedAt: "2026-11-20T09:55:00+00:00",
+            source: "sidecar-checks",
+            failedSteps: ["tests"],
+          },
+        },
+      },
+    ],
+  };
+  await using screen = await render(<FleetBoard overview={failing} onRefresh={() => {}} />);
+  await screen.getByText("GH-2").click();
+  await expect.element(screen.getByText(/matches the PR head, run by the sidecar/)).toBeVisible();
+  await expect.element(screen.getByText(/failed: tests/)).toBeVisible();
 });
 
 it("says plainly when the snapshot has no scope information", async () => {
