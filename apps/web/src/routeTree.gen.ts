@@ -21,6 +21,7 @@ import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$proje
 import { Route as ChatWorkflowsRouteImport } from './routes/_chat.workflows'
 import { Route as ChatWorkflowRouteImport } from './routes/_chat.workflow'
 import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
+import { Route as ChatThreadActivityRouteImport } from './routes/_chat.thread-activity'
 import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
@@ -115,6 +116,11 @@ const ChatWorkflowRoute = ChatWorkflowRouteImport.update({
 const ChatUsageRoute = ChatUsageRouteImport.update({
   id: '/usage',
   path: '/usage',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatThreadActivityRoute = ChatThreadActivityRouteImport.update({
+  id: '/thread-activity',
+  path: '/thread-activity',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatSettingsRoute = ChatSettingsRouteImport.update({
@@ -320,6 +326,7 @@ export interface FileRoutesByFullPath {
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
+  '/thread-activity': typeof ChatThreadActivityRoute
   '/usage': typeof ChatUsageRoute
   '/workflow': typeof ChatWorkflowRoute
   '/workflows': typeof ChatWorkflowsRoute
@@ -368,6 +375,7 @@ export interface FileRoutesByTo {
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
+  '/thread-activity': typeof ChatThreadActivityRoute
   '/usage': typeof ChatUsageRoute
   '/workflow': typeof ChatWorkflowRoute
   '/workflows': typeof ChatWorkflowsRoute
@@ -419,6 +427,7 @@ export interface FileRoutesById {
   '/_chat/new': typeof ChatNewRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/_chat/settings': typeof ChatSettingsRouteWithChildren
+  '/_chat/thread-activity': typeof ChatThreadActivityRoute
   '/_chat/usage': typeof ChatUsageRoute
   '/_chat/workflow': typeof ChatWorkflowRoute
   '/_chat/workflows': typeof ChatWorkflowsRoute
@@ -471,6 +480,7 @@ export interface FileRouteTypes {
     | '/new'
     | '/pull-requests'
     | '/settings'
+    | '/thread-activity'
     | '/usage'
     | '/workflow'
     | '/workflows'
@@ -519,6 +529,7 @@ export interface FileRouteTypes {
     | '/new'
     | '/pull-requests'
     | '/settings'
+    | '/thread-activity'
     | '/usage'
     | '/workflow'
     | '/workflows'
@@ -569,6 +580,7 @@ export interface FileRouteTypes {
     | '/_chat/new'
     | '/_chat/pull-requests'
     | '/_chat/settings'
+    | '/_chat/thread-activity'
     | '/_chat/usage'
     | '/_chat/workflow'
     | '/_chat/workflows'
@@ -703,6 +715,13 @@ declare module '@tanstack/react-router' {
       path: '/usage'
       fullPath: '/usage'
       preLoaderRoute: typeof ChatUsageRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/thread-activity': {
+      id: '/_chat/thread-activity'
+      path: '/thread-activity'
+      fullPath: '/thread-activity'
+      preLoaderRoute: typeof ChatThreadActivityRouteImport
       parentRoute: typeof ChatRoute
     }
     '/_chat/settings': {
@@ -1030,6 +1049,7 @@ interface ChatRouteChildren {
   ChatNewRoute: typeof ChatNewRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatSettingsRoute: typeof ChatSettingsRouteWithChildren
+  ChatThreadActivityRoute: typeof ChatThreadActivityRoute
   ChatUsageRoute: typeof ChatUsageRoute
   ChatWorkflowRoute: typeof ChatWorkflowRoute
   ChatWorkflowsRoute: typeof ChatWorkflowsRoute
@@ -1045,6 +1065,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatNewRoute: ChatNewRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatSettingsRoute: ChatSettingsRouteWithChildren,
+  ChatThreadActivityRoute: ChatThreadActivityRoute,
   ChatUsageRoute: ChatUsageRoute,
   ChatWorkflowRoute: ChatWorkflowRoute,
   ChatWorkflowsRoute: ChatWorkflowsRoute,

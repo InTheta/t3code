@@ -320,12 +320,12 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           <SidebarUtilityItem
             icon={<WorkflowIcon />}
             // oxlint-disable-next-line t3code/no-untranslated-copy -- fork: operator link, English only
-            label="Workflow"
+            label="Thread activity"
             onClick={() => {
               closeMobileSidebar();
               const thread = threadTarget?.kind === "server" ? threadTarget.threadRef : undefined;
               void navigate({
-                to: "/workflow",
+                to: "/thread-activity",
                 search: {
                   environment: thread?.environmentId,
                   thread: thread?.threadId,
