@@ -398,7 +398,10 @@ export type SaveResult =
 
 function failure(status: number, body: unknown): string {
   if (status === 401 || status === 403) return "Changing the sidecar needs operator access.";
-  if (status === 404) return "The sidecar is not connected.";
+  if (status === 404)
+    return "The sidecar did not recognise that. Refresh; if it persists, it is not connected.";
+  if (status === 502 || status === 503 || status === 504)
+    return "The T3 server could not reach the sidecar. Check that the sidecar and its tunnel are running.";
   if (status === 400 && isRecord(body) && typeof body.error === "string") return body.error;
   return "The sidecar could not save the change.";
 }
@@ -418,7 +421,10 @@ export async function saveRetentionPolicy(
       ? { ok: true, policy: parseRetentionPolicy(body) }
       : { ok: false, message: failure(response.status, body) };
   } catch {
-    return { ok: false, message: "The sidecar could not be reached." };
+    return {
+      ok: false,
+      message: "This app could not reach its own T3 server (it may be restarting). Try again.",
+    };
   }
 }
 
@@ -916,7 +922,10 @@ async function putSidecar(
     const reply: unknown = await response.json().catch(() => null);
     return response.ok ? { ok: true } : { ok: false, message: failure(response.status, reply) };
   } catch {
-    return { ok: false, message: "The sidecar could not be reached." };
+    return {
+      ok: false,
+      message: "This app could not reach its own T3 server (it may be restarting). Try again.",
+    };
   }
 }
 

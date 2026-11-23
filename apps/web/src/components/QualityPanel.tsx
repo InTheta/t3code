@@ -264,9 +264,13 @@ export function QualityPanel({
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <p>
           <span
-            className={`rounded-full border px-2 py-0.5 text-xs ${quality.passed ? "border-success text-success" : levelClass.fail}`}
+            className={`rounded-full border px-2 py-0.5 text-xs ${quality.runs === 0 ? "border-border text-muted-foreground" : quality.passed ? "border-success text-success" : levelClass.fail}`}
           >
-            {quality.passed ? "Record check passed" : "Record check failed"}
+            {quality.runs === 0
+              ? "No managed runs yet"
+              : quality.passed
+                ? "Record check passed"
+                : "Record check failed"}
           </span>{" "}
           {quality.runs} runs · {quality.decisions} decisions · {percent(quality.coverage)}{" "}
           traceable · {quality.counts.fail} failed · {quality.counts.warn} to review
@@ -280,9 +284,20 @@ export function QualityPanel({
         Read-only; it never changes a run or a route.
       </p>
 
+      {quality.runs === 0 && (
+        <p className="mt-3 rounded-lg border p-3 text-sm" role="status">
+          Nothing has been checked because no managed run has been recorded yet. Quality covers
+          managed runs only: a brief that a named person approved and that was played through the
+          lead, implementation and QA stages. Threads you start yourself, and tasks such as the ones
+          on Fleet, are not managed runs, so they do not appear here.
+        </p>
+      )}
+
       <h2 className="mt-5 font-medium">Findings</h2>
       {quality.findings.length === 0 ? (
-        <p className="mt-2 text-sm">Nothing to report.</p>
+        <p className="mt-2 text-sm">
+          {quality.runs === 0 ? "No runs to check." : "Nothing to report."}
+        </p>
       ) : (
         <ul className="mt-2 grid gap-2">
           {quality.findings.map((finding) => (
