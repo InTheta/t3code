@@ -1779,16 +1779,16 @@ function OpenCommandPaletteDialog(props: {
 
   actionItems.push({
     kind: "action",
-    value: "action:workflow",
-    searchTerms: ["workflow", "agents", "delegation", "delivery"],
+    value: "action:thread-activity",
+    searchTerms: ["thread activity", "workflow", "agents", "delegation", "delivery"],
     // oxlint-disable-next-line t3code/no-untranslated-copy -- fork: operator command, English only
-    title: "Open Workflow",
+    title: "Open Thread activity",
     icon: <ChartNoAxesColumnIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       const thread =
         paletteRouteTarget?.kind === "server" ? paletteRouteTarget.threadRef : undefined;
       await navigate({
-        to: "/workflow",
+        to: "/thread-activity",
         search: { environment: thread?.environmentId, thread: thread?.threadId, run: undefined },
       });
     },
