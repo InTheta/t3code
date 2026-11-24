@@ -1,4 +1,4 @@
-name: Beta macOS and Ubuntu qualification
+name: Beta macOS qualification
 on:
   push:
     branches: [qualification/beta-platforms-20261124a]
@@ -13,11 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-24.04
-            artifact: ubuntu-x64
-            task: dist:desktop:linux
-            extension: AppImage
-          - runner: macos-15
+          - runner: macos-26
             artifact: macos-arm64
             task: dist:desktop:dmg:arm64
             extension: dmg
@@ -38,11 +34,6 @@ jobs:
       - uses: ./.github/actions/setup-ci-deps
         with:
           install-args: --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
-      - name: Install Ubuntu packaging libraries
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libsecret-1-dev pkg-config imagemagick libgtk-3-0t64 libnss3 libasound2t64 libgbm1
       - name: Package desktop application
         shell: bash
         run: |
