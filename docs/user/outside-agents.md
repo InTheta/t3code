@@ -188,6 +188,11 @@ A send or thread control can fail with `runtime_mode_escalation_denied `if the
 target thread runs with more permissions than the calling client. The error
 shows both modes. T3 does not queue the action or open an approval request.
 
+For a new thread, T3 also rejects an explicitly requested mode above the
+caller's limit. That request creates no thread. Retry with an allowed mode or
+omit the mode to inherit the caller's. A successful retry starts a thread at
+the resulting mode, where the provider may ask for approval during the run.
+
 Open the target thread in T3 Code and send from its composer. On the machine
 running that environment, you can also use `t3 thread send `with its thread
 ID. If the thread can do its work with fewer permissions, change its mode in
