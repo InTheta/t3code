@@ -16,7 +16,7 @@ import { QualityPanel } from "~/components/QualityPanel";
 import { SidecarSettings } from "~/components/SidecarSettings";
 import { deliveryCiRun, parseDeliveryPullRequestUrl } from "~/lib/deliveryPullRequest";
 import { fetchDeliverySidecar } from "~/lib/deliverySidecarFetch";
-import { parseManagedRunId, readManagedRun } from "~/lib/managedRunDelivery";
+import { parseManagedRunId, readManagedRunResult } from "~/lib/managedRunDelivery";
 import {
   readFleetOverview,
   readInbox,
@@ -459,7 +459,7 @@ export const Route = createFileRoute("/_chat/delivery")({
         : null,
     pullRequestDelivery:
       !deps.run && deps.pr ? await readPullRequestDelivery(deps.pr, abortController.signal) : null,
-    managedRun: deps.run ? await readManagedRun(deps.run, abortController.signal) : null,
+    managedRun: deps.run ? await readManagedRunResult(deps.run, abortController.signal) : null,
     fleet: deps.view === "fleet" ? await readFleetOverview(abortController.signal) : null,
     sidecar: deps.view === "sidecar" ? await readSidecarStatus(abortController.signal) : null,
     proposals: deps.view === "sidecar" ? await readProposals(abortController.signal) : null,
