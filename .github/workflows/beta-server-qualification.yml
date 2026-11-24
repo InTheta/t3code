@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      T3_QUALIFICATION_SHA: b70be04190ecd3c8229d094f569c4343b7834fdc
+      T3_QUALIFICATION_SHA: 2df5e46e606fa0ed4968c070878f697bc5bc8ccd
       T3CODE_TELEMETRY_CHANNEL: dev
     steps:
       - name: Fetch pinned source
