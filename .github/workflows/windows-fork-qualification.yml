@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 45
     env:
-      T3_QUALIFICATION_SHA: 2df5e46e606fa0ed4968c070878f697bc5bc8ccd
+      T3_QUALIFICATION_SHA: c5d9ce3d33e1b8afc8ca540103573c21fb7c90b9
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
       - name: Check out the pinned public source
