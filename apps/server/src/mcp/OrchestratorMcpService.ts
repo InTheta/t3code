@@ -3814,6 +3814,9 @@ const make = Effect.gen(function* () {
         status,
         timedOut: result.timedOut,
         ...(wakesCaller ? { next: ORCHESTRATOR_MCP_RUNNING_TASK_NEXT } : {}),
+        ...(input.runId !== undefined && result.run !== null && result.run.id !== input.runId
+          ? { continuedFromRunId: input.runId }
+          : {}),
         ...(result.resultRun === undefined
           ? {}
           : {

@@ -619,6 +619,8 @@ export const OrchestratorMcpThreadWaitResult = Schema.Struct({
   status: OrchestratorMcpThreadStatus,
   timedOut: Schema.Boolean,
   next: Schema.optional(OrchestratorMcpRunningTaskNext),
+  /** The requested run, when runId names a server-verified restart continuation of it. */
+  continuedFromRunId: Schema.optional(RunId),
   /** With untilDelegatedWorkSettled, once settled: the run whose reply is the thread's result. */
   resultRun: Schema.optional(Schema.Struct({ runId: RunId, status: OrchestrationV2RunStatus })),
   /** What the run returned against the `outputSchema` it was sent with. Absent until submitted. */
