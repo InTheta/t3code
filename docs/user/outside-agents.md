@@ -159,7 +159,7 @@ without a sign-in:
 
 ```sh
 id=$(t3 thread start . "Find why the tests are slow")
-t3 thread send "$id" "Now fix it" --wait
+t3 thread send"$id" "Now fix it" --wait
 t3 thread show "$id"
 t3 thread list
 ```
@@ -184,7 +184,7 @@ result that always includes the thread id.
 
 ## Fix a thread mode mismatch
 
-A send or thread control can fail with `runtime_mode_escalation_denied `if the
+A send or thread control can fail with `runtime_mode_escalation_denied`if the
 target thread runs with more permissions than the calling client. The error
 shows both modes. T3 does not queue the action or open an approval request.
 
@@ -194,14 +194,27 @@ omit the mode to inherit the caller's. A successful retry starts a thread at
 the resulting mode, where the provider may ask for approval during the run.
 
 Open the target thread in T3 Code and send from its composer. On the machine
-running that environment, you can also use `t3 thread send `with its thread
+running that environment, you can also use `t3 thread send`with its thread
 ID. If the thread can do its work with fewer permissions, change its mode in
 the composer before retrying from the outside client.
 
-To change a standalone client's access, revoke its own session in **Settings →
-Sharing & access**, then sign in again and approve the needed level. This
-applies to the client across the environment. Keep the lower level for clients
-that do not need broader control.
+To change a standalone client's access, run the client's MCP login again for
+its existing server entry. Approve the level under **Settings → Sharing & access
+→ Use in another app (MCP)**. Open a fresh session in the client so it uses the
+new token. Verify the effective mode with the MCP tool
+`orchestrator_capabilities`. Then revoke the superseded grant for that client
+in **Authorized clients**. Reauthorization applies across the environment.
+
+The scope count in **Authorized clients** describes capabilities. Supervised,
+Auto-accept edits, and Auto have the same scope count. Full access adds settings
+and source-control write scopes. Use Full access only for a trusted client that
+needs to control Full access threads. Client-side tool confirmation, if any, is
+an additional step.
+
+Keep the same T3 profile and MCP URL when updating an installation. The
+environment's session database and signing keys, and the client's OAuth token
+store, are needed to reuse existing grants. An ordinary update using the same
+profile does not require a new login. Revoked or expired grants need a new login.
 
 ## Remove an agent
 

@@ -1,6 +1,6 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, mcpClientScopes } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -401,6 +401,38 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.lay
       expect((yield* sessions.verify(uncapped.token)).runtimeModeCeiling).toBeUndefined();
     }).pipe(Effect.provide(layerSessionStore())),
   );
+  it.effect("preserves outside MCP client access when the server reopens its profile", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-mcp-auth-restart-" });
+      const initial = yield* makeDiskSessionStoreLayer(baseDir);
+      const grants = ["approval-required", "full-access"] as const;
+      const issued = yield* Effect.gen(function* () {
+        const sessions = yield* SessionStore.SessionStore;
+        return yield* Effect.forEach(grants, (access) =>
+          sessions.issue({
+            subject: "mcp-client",
+            method: "bearer-access-token",
+            runtimeModeCeiling: access,
+            scopes: mcpClientScopes(access),
+          }),
+        );
+      }).pipe(Effect.provide(initial), Effect.scoped);
+
+      const reopened = yield* makeDiskSessionStoreLayer(baseDir);
+      yield* Effect.gen(function* () {
+        const sessions = yield* SessionStore.SessionStore;
+        for (const [index, access] of grants.entries()) {
+          const grant = issued[index]!;
+          const session = yield* sessions.verify(grant.token);
+          expect(session.sessionId).toBe(grant.sessionId);
+          expect(session.runtimeModeCeiling).toBe(access);
+          expect(session.scopes).toEqual(mcpClientScopes(access));
+        }
+      }).pipe(Effect.provide(reopened), Effect.scoped);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("takes scopes from the session record", () =>
     Effect.gen(function* () {
       const sessions = yield* SessionStore.SessionStore;
