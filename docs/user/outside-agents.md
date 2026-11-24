@@ -182,6 +182,22 @@ reported by `orchestrator_capabilities`. `true` and `false` set on/off options.
 2 when the agent waits for an answer you give in the app. Add `--json` for a
 result that always includes the thread id.
 
+## Fix a thread mode mismatch
+
+A send or thread control can fail with `runtime_mode_escalation_denied `if the
+target thread runs with more permissions than the calling client. The error
+shows both modes. T3 does not queue the action or open an approval request.
+
+Open the target thread in T3 Code and send from its composer. On the machine
+running that environment, you can also use `t3 thread send `with its thread
+ID. If the thread can do its work with fewer permissions, change its mode in
+the composer before retrying from the outside client.
+
+To change a standalone client's access, revoke its own session in **Settings →
+Sharing & access**, then sign in again and approve the needed level. This
+applies to the client across the environment. Keep the lower level for clients
+that do not need broader control.
+
 ## Remove an agent
 
 Approved agents appear under **Settings → Sharing & access** like other clients.
