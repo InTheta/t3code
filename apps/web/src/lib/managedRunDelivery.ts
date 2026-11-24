@@ -12,6 +12,14 @@ const ManagedRun = Schema.Struct({
   traceId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-f0-9]{32}$/))),
   revision: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
   status: Schema.String,
+  candidateSha: Schema.optionalKey(CommitSha),
+  source: Schema.optionalKey(
+    Schema.Struct({
+      host: Schema.String,
+      buildSha: Schema.NullOr(CommitSha),
+      readAt: Schema.String,
+    }),
+  ),
   brief: Schema.Struct({
     workspaceId: Schema.String,
     repository: Schema.String,
@@ -89,17 +97,31 @@ export function parseManagedRun(input: unknown, requestedRunId: string): Managed
     : null;
 }
 
+type ManagedRunFailure =
+  | { kind: "forbidden" | "missing" | "invalid" | "unreachable" }
+  | { kind: "http"; status: number };
+
 export async function readManagedRun(
   runId: string,
   signal: AbortSignal,
-): Promise<ManagedRun | null> {
+): Promise<{ run: ManagedRun; failure?: never } | { run?: never; failure: ManagedRunFailure }> {
   try {
     const response = await fetchDeliverySidecar(
       `/delivery-sidecar/v1/managed-runs/${encodeURIComponent(runId)}`,
       signal,
     );
-    return response.ok ? parseManagedRun(await response.json(), runId) : null;
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        return { failure: { kind: "forbidden" } };
+      }
+      if (response.status === 404) {
+        return { failure: { kind: "missing" } };
+      }
+      return { failure: { kind: "http", status: response.status } };
+    }
+    const run = parseManagedRun(await response.json(), runId);
+    return run ? { run } : { failure: { kind: "invalid" } };
   } catch {
-    return null;
+    return { failure: { kind: "unreachable" } };
   }
 }

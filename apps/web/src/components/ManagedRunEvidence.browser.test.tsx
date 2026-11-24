@@ -54,13 +54,35 @@ const run: ManagedRun = {
 };
 it("links an operator wait to the locally known worker and preserves unknown evidence", async () => {
   await using screen = await render(<ManagedRunEvidence run={run} />);
-  await expect.element(screen.getByText("implementation · Waiting for operator")).toBeVisible();
+  await expect.element(screen.getByText("implementation · Needs a person")).toBeVisible();
   await expect
     .element(screen.getByRole("link", { name: "Open worker thread" }))
     .toHaveAttribute("href", "/windows-fixture/mcp%3Alaunch%3Aknown");
   await expect.element(screen.getByText("Thread mcp:launch:unknown")).toBeVisible();
   await expect.element(screen.getByText("Tool calls 0")).toBeVisible();
   await expect.element(screen.getByText("Tool calls Unknown")).toBeVisible();
+});
+
+it("shows independent approval, worker, and review stages with the verified candidate", async () => {
+  const candidateSha = "c".repeat(40);
+  await using screen = await render(
+    <ManagedRunEvidence
+      run={{
+        ...run,
+        candidateSha,
+        source: { host: "dell-fixture", buildSha: "d".repeat(40), readAt: "2026-11-24T19:00:00Z" },
+        stages: [
+          ...run.stages,
+          { ...run.stages[1]!, stageId: "active-worker", role: "build", status: "running" },
+        ],
+      }}
+    />,
+  );
+  await expect.element(screen.getByText("implementation · Needs a person")).toBeVisible();
+  await expect.element(screen.getByText("qa · Ready for review")).toBeVisible();
+  await expect.element(screen.getByText("build · Waiting for worker")).toBeVisible();
+  await expect.element(screen.getByText(candidateSha)).toBeVisible();
+  await expect.element(screen.getByText("dell-fixture")).toBeVisible();
 });
 
 it("shows a provider quota pause and the original worker link", async () => {

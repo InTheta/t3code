@@ -166,6 +166,13 @@ function PullRequestEvidence({ delivery }: { delivery: PullRequestDelivery }) {
   );
 }
 
+const managedRunFailures = {
+  forbidden: "T3 denied access to managed run evidence.",
+  missing: "The sidecar has no record of this run in the configured workspace.",
+  invalid: "The sidecar returned invalid evidence for this run.",
+  unreachable: "T3 could not reach the managed run endpoint.",
+};
+
 function DeliveryPage() {
   const router = useRouter();
   const navigate = useNavigate({ from: Route.fullPath });
@@ -362,14 +369,16 @@ function DeliveryPage() {
               Open managed run
             </button>
           </form>
-          {run && (loading || !managedRun) && (
+          {run && (loading || managedRun?.failure) && (
             <p className="mt-4 text-sm" role="status">
               {loading
                 ? "Reading managed run…"
-                : "Managed run unavailable. Check the run ID and sidecar connection."}
+                : managedRun?.failure?.kind === "http"
+                  ? `The managed run endpoint returned HTTP ${managedRun.failure.status}.`
+                  : managedRun?.failure && managedRunFailures[managedRun.failure.kind]}
             </p>
           )}
-          {managedRun && !loading && <ManagedRunEvidence run={managedRun} />}
+          {managedRun?.run && !loading && <ManagedRunEvidence run={managedRun.run} />}
           {!run && pr && (loading || !pullRequestDelivery) && (
             <p className="mt-4 text-sm" role="status">
               {loading

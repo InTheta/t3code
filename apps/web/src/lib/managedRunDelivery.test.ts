@@ -70,11 +70,13 @@ describe("managed-run Delivery", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(Response.json(run))
       .mockResolvedValueOnce(new Response(null, { status: 404 }));
-    await expect(readManagedRun(runId, signal)).resolves.toMatchObject(run);
+    await expect(readManagedRun(runId, signal)).resolves.toMatchObject({ run });
     expect(fetch).toHaveBeenCalledWith(`/delivery-sidecar/v1/managed-runs/${runId}`, {
       cache: "no-store",
       signal,
     });
-    await expect(readManagedRun(runId, signal)).resolves.toBeNull();
+    await expect(readManagedRun(runId, signal)).resolves.toMatchObject({
+      failure: { kind: "missing" },
+    });
   });
 });

@@ -34,7 +34,7 @@ function formatCount(value: number | null): string {
 }
 
 const stageStatusLabels = new Map([
-  ["waiting_for_operator", "Waiting for operator"],
+  ["waiting_for_operator", "Needs a person"],
   ["paused_provider_quota", "Paused on provider quota"],
   ["cancelling_quota", "Cancelling provider replacement"],
 ]);
@@ -58,6 +58,10 @@ export function ManagedRunEvidence({
     ["Workspace", brief.workspaceId],
     ["Repository", brief.repository],
     ["Base commit", brief.baseSha],
+    ["Verified candidate", run.candidateSha ?? "Unavailable"],
+    ["Sidecar host", run.source?.host ?? "Unavailable"],
+    ["Sidecar build", run.source?.buildSha ?? "Unavailable"],
+    ["Ledger read at", run.source?.readAt ?? "Unavailable"],
     ["Scope", brief.scope],
     ["Brief tokens", formatCount(brief.tokens)],
     ["Reserved tokens", formatCount(budget.reserved)],
@@ -119,11 +123,22 @@ export function ManagedRunEvidence({
               key={stage.stageId}
             >
               <p className="font-medium">
-                {stage.role} · {stageStatusLabels.get(stage.status) ?? stage.status}
+                {stage.role} ·{" "}
+                {stage.status === "queued" && stage.role === "qa" && run.candidateSha
+                  ? "Ready for review"
+                  : stage.status === "running" && stage.threadId
+                    ? "Waiting for worker"
+                    : (stageStatusLabels.get(stage.status) ?? stage.status)}
               </p>
               <p>Stage ID {stage.stageId}</p>
               <p>Provider instance {stage.providerInstanceId ?? "Unknown"}</p>
               <WorkerThread id={stage.threadId} />
+              {stage.status === "running" && stage.threadId && (
+                <p>Next event · the bound worker reports its result.</p>
+              )}
+              {stage.status === "queued" && stage.role === "qa" && run.candidateSha && (
+                <p>Next event · the controller launches independent review.</p>
+              )}
               <p>Tool calls {formatCount(stage.toolCalls ?? null)}</p>
               {run.stageAttempts
                 ?.filter((attempt) => attempt.stageId === stage.stageId)
