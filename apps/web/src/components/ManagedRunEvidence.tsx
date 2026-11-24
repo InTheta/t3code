@@ -1,7 +1,7 @@
 /* oxlint-disable t3code/no-untranslated-copy -- fork-only operator screen, English only */
 import { ThreadId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { useNowSecond } from "~/hooks/useNowSecond";
 import { formatAge } from "~/lib/sidecarApi";
@@ -62,9 +62,9 @@ export function ManagedRunEvidence({
   const [selectedNode, setSelectedNode] = useState<string | undefined>();
   const flow = buildRunFlow(run);
   const selectedStage = flow.nodes.find((node) => node.id === selectedNode)?.stageId;
-  const fields = [
+  const fields: Array<readonly [label: string, value: ReactNode]> = [
     ["Run ID", run.runId],
-    ...(run.traceId ? [["Langfuse correlation ID", run.traceId]] : []),
+    ...(run.traceId ? ([["Langfuse correlation ID", run.traceId]] as const) : []),
     ["Status", run.status],
     ["Brief revision", run.revision],
     ["Workspace", brief.workspaceId],

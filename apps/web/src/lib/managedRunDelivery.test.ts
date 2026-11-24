@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { parseManagedRun, parseManagedRunId, readManagedRun } from "./managedRunDelivery";
+import {
+  parseManagedRun,
+  parseManagedRunId,
+  readManagedRun,
+  readManagedRunResult,
+} from "./managedRunDelivery";
 
 const runId = "547c0437-b190-4c3f-a703-ae2c3d839e27";
 const otherId = "547c0437-b190-4c3f-a703-ae2c3d839e28";
@@ -70,13 +75,17 @@ describe("managed-run Delivery", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(Response.json(run))
       .mockResolvedValueOnce(new Response(null, { status: 404 }));
-    await expect(readManagedRun(runId, signal)).resolves.toMatchObject({ run });
+    await expect(readManagedRunResult(runId, signal)).resolves.toMatchObject({ run });
     expect(fetch).toHaveBeenCalledWith(`/delivery-sidecar/v1/managed-runs/${runId}`, {
       cache: "no-store",
       signal,
     });
-    await expect(readManagedRun(runId, signal)).resolves.toMatchObject({
+    await expect(readManagedRunResult(runId, signal)).resolves.toMatchObject({
       failure: { kind: "missing" },
     });
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(run));
+    await expect(readManagedRun(runId, signal)).resolves.toMatchObject(run);
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 404 }));
+    await expect(readManagedRun(runId, signal)).resolves.toBeNull();
   });
 });

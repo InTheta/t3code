@@ -101,7 +101,7 @@ type ManagedRunFailure =
   | { kind: "forbidden" | "missing" | "invalid" | "unreachable" }
   | { kind: "http"; status: number };
 
-export async function readManagedRun(
+export async function readManagedRunResult(
   runId: string,
   signal: AbortSignal,
 ): Promise<{ run: ManagedRun; failure?: never } | { run?: never; failure: ManagedRunFailure }> {
@@ -124,4 +124,11 @@ export async function readManagedRun(
   } catch {
     return { failure: { kind: "unreachable" } };
   }
+}
+
+export async function readManagedRun(
+  runId: string,
+  signal: AbortSignal,
+): Promise<ManagedRun | null> {
+  return (await readManagedRunResult(runId, signal)).run ?? null;
 }
