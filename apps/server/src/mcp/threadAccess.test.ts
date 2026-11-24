@@ -134,6 +134,8 @@ it.effect("identifies the target and effective caller ceiling when a thread writ
       expect(error.message).toContain(bareId);
       expect(error.message).toContain("full-access/default");
       expect(error.message).toContain(`${runtimeMode}/${interactionMode}`);
+      expect(error.message).toContain("no approval request was opened");
+      expect(error.message).toContain("Settings > Sharing & access");
       expect(error.message).not.toMatch(/child|parent mode/i);
     }
   }),
