@@ -83,6 +83,10 @@ it("shows independent approval, worker, and review stages with the verified cand
   await expect.element(screen.getByText("build · Waiting for worker")).toBeVisible();
   await expect.element(screen.getByText(candidateSha)).toBeVisible();
   await expect.element(screen.getByText("dell-fixture")).toBeVisible();
+  await expect.element(screen.getByText("Snapshot age", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Next owner · bound worker")).toBeVisible();
+  await expect.element(screen.getByText("Next owner · operator")).toBeVisible();
+  await expect.element(screen.getByText("Next event · independent review launch")).toBeVisible();
 });
 
 it("shows a provider quota pause and the original worker link", async () => {

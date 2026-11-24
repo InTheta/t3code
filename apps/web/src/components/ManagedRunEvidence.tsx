@@ -3,6 +3,8 @@ import { ThreadId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
+import { useNowSecond } from "~/hooks/useNowSecond";
+import { formatAge } from "~/lib/sidecarApi";
 import { buildRunFlow } from "~/lib/runFlow";
 import type { ManagedRun } from "~/lib/managedRunDelivery";
 import { FlowDiagram } from "./FlowDiagram";
@@ -33,6 +35,16 @@ function formatCount(value: number | null): string {
   return value === null ? "Unknown" : value.toLocaleString();
 }
 
+function SnapshotAge({ readAt }: { readAt: string }) {
+  const now = useNowSecond();
+  const asOf = Date.parse(readAt);
+  return (
+    <time dateTime={readAt}>
+      {formatAge(Number.isFinite(asOf) ? Math.max(0, Math.round((now - asOf) / 1000)) : null)}
+    </time>
+  );
+}
+
 const stageStatusLabels = new Map([
   ["waiting_for_operator", "Needs a person"],
   ["paused_provider_quota", "Paused on provider quota"],
@@ -61,7 +73,10 @@ export function ManagedRunEvidence({
     ["Verified candidate", run.candidateSha ?? "Unavailable"],
     ["Sidecar host", run.source?.host ?? "Unavailable"],
     ["Sidecar build", run.source?.buildSha ?? "Unavailable"],
-    ["Ledger read at", run.source?.readAt ?? "Unavailable"],
+    [
+      "Snapshot age",
+      run.source ? <SnapshotAge key="snapshot-age" readAt={run.source.readAt} /> : "Unavailable",
+    ],
     ["Scope", brief.scope],
     ["Brief tokens", formatCount(brief.tokens)],
     ["Reserved tokens", formatCount(budget.reserved)],
@@ -134,10 +149,16 @@ export function ManagedRunEvidence({
               <p>Provider instance {stage.providerInstanceId ?? "Unknown"}</p>
               <WorkerThread id={stage.threadId} />
               {stage.status === "running" && stage.threadId && (
-                <p>Next event · the bound worker reports its result.</p>
+                <div>
+                  <p>Next owner · bound worker</p>
+                  <p>Next event · worker result</p>
+                </div>
               )}
               {stage.status === "queued" && stage.role === "qa" && run.candidateSha && (
-                <p>Next event · the controller launches independent review.</p>
+                <div>
+                  <p>Next owner · controller</p>
+                  <p>Next event · independent review launch</p>
+                </div>
               )}
               <p>Tool calls {formatCount(stage.toolCalls ?? null)}</p>
               {run.stageAttempts
@@ -181,9 +202,10 @@ export function ManagedRunEvidence({
                   </div>
                 )}
               {stage.status === "waiting_for_operator" && (
-                <p className="mt-1 text-muted-foreground">
-                  Review the pending request in the worker thread to continue.
-                </p>
+                <div className="mt-1 text-muted-foreground">
+                  <p>Next owner · operator</p>
+                  <p>Next event · response to the pending request in the worker thread</p>
+                </div>
               )}
             </li>
           ))}
