@@ -756,6 +756,14 @@ describe("OrchestratorMcpService", () => {
         const waited = yield* service.waitForThread(scope, { threadId: childThreadId });
         assert.equal(waited.status, "completed");
         assert.notProperty(waited, "next");
+        assert.notProperty(waited, "continuedFromRunId");
+        const originalRunId = RunId.make("run:mcp-next-before-restart");
+        const continued = yield* service.waitForThread(scope, {
+          threadId: childThreadId,
+          runId: originalRunId,
+        });
+        assert.equal(continued.runId, childRun().id);
+        assert.equal(continued.continuedFromRunId, originalRunId);
       }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
     }),
   );
