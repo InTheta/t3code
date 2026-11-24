@@ -267,7 +267,15 @@ export const startsThreads = <P, A, E, R>(
   const started = Effect.fn("McpToolAccess.started")(function* (caller: Caller, params: P) {
     const requested = modes(params);
     return {
-      runtimeMode: yield* resolveRuntimeMode(caller.limits.runtimeMode, requested.runtimeMode),
+      runtimeMode: yield* resolveRuntimeMode(caller.limits.runtimeMode, requested.runtimeMode).pipe(
+        Effect.mapError(
+          (error) =>
+            new OrchestratorMcpFailure({
+              code: error.code,
+              message: `Launch blocked: requested runtime mode is ${requested.runtimeMode}, but this MCP caller can start threads up to ${caller.limits.runtimeMode}. This request did not start a thread or open an approval request. Retry with ${caller.limits.runtimeMode} or omit runtimeMode to inherit the caller's mode. Use T3 Code directly if the work requires broader access.`,
+            }),
+        ),
+      ),
       interactionMode: yield* resolveInteractionMode(
         caller.limits.interactionMode,
         requested.interactionMode,
