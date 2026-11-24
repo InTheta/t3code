@@ -909,6 +909,7 @@ const layerMakeRoutes = Layer.mergeAll(
     IsolatedApprovalHttp.layer,
     DeliverySidecarHttp.layer,
     ServerHttp.layerOtlpTracesProxyRoute,
+    ServerHttp.layerDesktopReadinessProofRoute,
     ServerHttp.layerAssetRoute,
     ServerHttp.layerAttachmentUploadRoute,
     GuestHttp.layer,
