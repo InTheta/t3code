@@ -1,0 +1,51 @@
+name: Beta Ubuntu server qualification
+on:
+  push:
+    branches: [qualification/beta-server-20261124a]
+permissions:
+  contents: read
+jobs:
+  package:
+    if: github.repository == 'InTheta/t3code'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      T3_QUALIFICATION_SHA: b70be04190ecd3c8229d094f569c4343b7834fdc
+      T3CODE_TELEMETRY_CHANNEL: dev
+    steps:
+      - name: Fetch pinned source
+        run: |
+          set -euo pipefail
+          git init
+          git fetch --no-tags --depth=1 https://github.com/InTheta/t3code.git "$T3_QUALIFICATION_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$T3_QUALIFICATION_SHA"
+      - uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/scripts...
+      - name: Install archive dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf libatomic1
+      - name: Build and smoke-test the headless archive
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./apps/server/package.json').version")"
+          target=x86_64-unknown-linux-gnu
+          monitor_dir="$RUNNER_TEMP/cli-resource-monitor"
+          mkdir -p "$monitor_dir/linux-x64"
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml --target "$target"
+          install "native/resource-monitor/target/$target/release/t3-resource-monitor" "$monitor_dir/linux-x64/t3-resource-monitor"
+          vp run --filter t3 build
+          node apps/server/scripts/cli.ts build-exe --verbose
+          node scripts/build-cli-archive.ts --platform linux --arch x64 --version "$version" --resource-monitor-dir "$monitor_dir" --output-dir release-cli
+          node scripts/smoke-cli-archive.ts --archive release-cli/* --expect-version "$version"
+          cd release-cli
+          sha256sum *.tar.gz > SHA256SUMS.txt
+          printf '%s\n' "$T3_QUALIFICATION_SHA" > SOURCE-SHA.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: t3-ubuntu-server-x64-qualification
+          path: release-cli/*
+          if-no-files-found: error
+          retention-days: 7
