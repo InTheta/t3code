@@ -21,7 +21,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 anchor="$(ls -d "$T3_SRC"/repo "$T3_SRC"/wt-* 2>/dev/null | head -n 1)"
 [ -n "$anchor" ] || { echo "no checkout under $T3_SRC" >&2; exit 2; }
 git -C "$anchor" fetch -q origin || { echo "fetch failed" >&2; exit 2; }
-sha="$(git -C "$anchor" rev-parse "origin/$ref" 2>/dev/null || git -C "$anchor" rev-parse "$ref")" || exit 2
+sha="$(git -C "$anchor" rev-parse --verify --quiet --end-of-options "origin/$ref^{commit}" || git -C "$anchor" rev-parse --verify --end-of-options "$ref^{commit}")" || exit 2
 short="${sha:0:10}"; out="$T3_SRC/checks"; mkdir -p "$out"
 work="$T3_SRC/wt-check-$short"; log="$out/$short.log"; : > "$log"
 git -C "$anchor" worktree add -q --detach "$work" "$sha" 2>>"$log" || { echo "worktree failed" >&2; exit 2; }
@@ -41,10 +41,18 @@ step format vp fmt --check
 step typecheck vp run typecheck
 step lint vp lint
 step tests vpr test
-failed="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -aoE 'FAIL +[a-z]+ +[^ ]+\.(test|browser\.test)\.[mc]?[jt]sx?' | awk '{print $NF}' | sort -u)"
+test_log="$out/$short.tests.log"
+sed -n '/^== tests$/,$p' "$log" | sed 's/\x1b\[[0-9;]*m//g' >"$test_log"
+failed="$(sed -nE 's/^[[:space:]]*FAIL[[:space:]]+([[:alnum:]_-]+[[:space:]]+(\([^)]*\)[[:space:]]+)?)?([^[:space:]]+\.test\.[mc]?[jt]sx?).*/\3/p' "$test_log" | sort -u)"
 new="$failed"
 if [ -f "$known" ]; then new="$(comm -23 <(printf '%s\n' "$failed" | sort -u) <(sort -u "$known"))"; fi
-if [ "${result[tests]}" = fail ] && [ -z "$new" ] && [ -n "$failed" ]; then result[tests]="pass-with-known-failures"; fi
+failed_files="$(awk '/^[[:space:]]*Test Files[[:space:]]+[0-9]+ failed/ { total += $3 } END { print total+0 }' "$test_log")"
+if [ "$failed_files" -gt 0 ] && [ -n "$failed" ] && [ -z "$new" ] &&
+   [ "$failed_files" -eq "$(printf '%s\n' "$failed" | wc -l)" ] &&
+   ! grep -Eq '^[[:space:]]*Errors[[:space:]]+[1-9][0-9]* error' "$test_log" &&
+   [ "${result[tests]}" = fail ]; then
+  result[tests]="pass-with-known-failures"
+fi
 overall=success; for k in install format typecheck lint tests; do case "${result[$k]}" in pass|pass-with-known-failures) ;; *) overall=failure;; esac; done
 {
   printf '{"sha":"%s","ref":"%s","finishedAt":"%s","overall":"%s"' "$sha" "$ref" "$(date -u +%FT%TZ)" "$overall"
